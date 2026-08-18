@@ -13,6 +13,10 @@ interface DeviceCommandParams {
   deviceName: string
 }
 
+interface WifiConfigParams {
+  nodeId: string
+}
+
 @Entry
 @Component
 struct DeviceDetailPage {
@@ -72,6 +76,17 @@ struct DeviceDetailPage {
     }
     router.pushUrl({
       url: 'pages/DeviceCommandPage',
+      params: params
+    })
+  }
+
+  private openWifiConfig(): void {
+    if (this.device === null) return
+    const params: WifiConfigParams = {
+      nodeId: String(this.device.nodeId)
+    }
+    router.pushUrl({
+      url: 'pages/WifiConfigPage',
       params: params
     })
   }
@@ -144,6 +159,16 @@ struct DeviceDetailPage {
               .border({ width: 1, color: AppTheme.primary })
               .borderRadius(8)
               .onClick(() => this.openCommands())
+
+            Button('上游 WiFi 配置')
+              .width('100%')
+              .height(48)
+              .fontSize(14)
+              .fontColor(AppTheme.primary)
+              .backgroundColor(AppTheme.surface)
+              .border({ width: 1, color: AppTheme.primary })
+              .borderRadius(8)
+              .onClick(() => this.openWifiConfig())
 
             Column({ space: 13 }) {
               Text('设备信息')

@@ -7,6 +7,7 @@ import { sessionStore } from '../session/SessionStore';
 import { themeStore } from '../storage/ThemeStore';
 import { alertSocketClient } from '../network/AlertSocketClient';
 import { deviceCommandPoller } from '../network/DeviceCommandPoller';
+import { wifiConfigPoller } from '../network/WifiConfigPoller';
 
 const DOMAIN = 0x0000;
 
@@ -18,6 +19,7 @@ export default class EntryAbility extends UIAbility {
   onDestroy(): void {
     alertSocketClient.stop();
     deviceCommandPoller.stop();
+    wifiConfigPoller.stop();
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onDestroy');
   }
 
@@ -57,6 +59,7 @@ export default class EntryAbility extends UIAbility {
   onForeground(): void {
     alertSocketClient.resume();
     deviceCommandPoller.resume();
+    wifiConfigPoller.resume();
     // Ability has brought to foreground
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onForeground');
   }
@@ -64,6 +67,7 @@ export default class EntryAbility extends UIAbility {
   onBackground(): void {
     alertSocketClient.pause();
     deviceCommandPoller.pause();
+    wifiConfigPoller.pause();
     // Ability has back to background
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onBackground');
   }

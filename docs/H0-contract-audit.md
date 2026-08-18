@@ -523,3 +523,64 @@ Block v3、代码摘要、证书链和 debug Profile 有效。本发布门没有
 后端升级期间的真实登录、命令入队、MQTT/ESP32 回执、租户隔离、401 重放和
 429 行为仍保持冻结。首次发布只冻结已通过的 HarmonyOS 客户端实现和审计证据，
 不把 Mock 或本地构建提升为真实端到端结论。
+
+## 17. 上游 WiFi 候选配置客户端阶段
+
+2026-08-18 完成设备上游 WiFi 候选配置的客户端最小闭环：
+
+- 设备详情新增“上游 WiFi 配置”入口，独立页面重新使用 nodeId 查询设备详情，
+  不信任路由携带的设备状态。
+- 提交复用
+  `POST /admin/devices/{deviceCode}/wifi-config/candidate`，请求体只包含当前
+  `ssid` 和 `password`。
+- 最近任务和精确任务分别复用
+  `GET /admin/devices/{deviceCode}/wifi-config/latest` 与
+  `GET /admin/devices/{deviceCode}/wifi-config/{requestId}`。
+- 新设备尚未配置时，`latest` 的 `ApiResponse.data=null` 是有效空状态；其他
+  任务响应必须校验设备编号、操作编号、配置版本、SSID、密码配置标记、状态和
+  时间字段，畸形响应按 `DEPENDENCY_PROTOCOL_INVALID` 拒绝。
+- 状态 `0/1/4` 分别为正在下发、已保存等待连接和结果未知，均不是终态；
+  `2/3/5` 分别为已生效、失败和被新配置替代，属于后端真实终态。
+- 客户端最多查询 20 次，每次请求完成后间隔 3 秒，不并发查询。页面离开、
+  Ability 后台和销毁会停止或暂停后续查询；本地次数耗尽不伪造设备失败。
+- 只读工作区和当前离线设备禁用提交，提交前使用内联二次确认。客户端门禁只
+  用于交互，最终角色、租户、设备归属、心跳和任务状态以后端结果为准。
+- SSID 和密码按 UTF-8 字节验证：SSID 为 1 到 32 字节；密码为空表示开放网络，
+  否则为 8 到 63 字节；两者均拒绝空字符。
+- 密码只保存在当前页面状态和当次 HTTP 请求体中。提交开始、提交失败、页面
+  隐藏或离开时立即清除，不写 Preferences、HUKS、日志或任务展示；响应只展示
+  后端 `passwordConfigured` 布尔值。
+- 提交契约不接受调用方幂等键，`requestId` 和 `configVersion` 均由后端生成。
+  客户端不会因网络超时自动重新提交；响应丢失后的人工重试无法由客户端证明
+  不会创建新版本。
+- 统一会话层仍只在明确 HTTP 401 后刷新并重放一次。其安全性依赖 Gateway 在
+  请求进入命令 Controller 前完成认证拒绝，必须在后端恢复后真实联调确认。
+
+测试新增 4 项，覆盖提交 DTO 不回传密码、最近任务空状态、真实终态集合和
+SSID/密码 UTF-8 边界，总计 32 项。首轮测试有一个测试期望错误，把 5 个汉字
+误写为 18 字节；实现实际返回正确的 15 字节，修正测试后显式检查 Hypium 输出
+中没有 `ERROR`。最终测试结果：
+
+```text
+BUILD SUCCESSFUL in 24 s 519 ms
+```
+
+完整 signed HAP 构建和独立验签通过：
+
+```text
+BUILD SUCCESSFUL in 25 s 680 ms
+entry/build/default/outputs/default/entry-default-signed.hap
+SHA-256 330DAA69E90A0CC29E81A3BBE288CE1EA26DCB330719F54B1BCC148142479740
+```
+
+`hap-sign-tool verify-app` 和 `verify-profile` 确认 Signing Block v3、代码
+摘要、证书链和 debug Profile 有效。最终 HAP 仅通过 `hdc install -r` 覆盖
+安装到唯一 USB 真机 `88X9K26526081036`，随后启动本应用；PID `55095` 的有限
+日志确认 `Ability onCreate`、`onWindowStageCreate`、`onForeground` 和内容
+加载成功，未匹配本应用 ERROR/FATAL。未卸载、未清数据、未重启设备、未修改
+系统设置，也未删除手机文件。
+
+后端升级和真机无管理员 Session 的条件没有变化，因此本阶段没有产生真实候选
+配置入库、加密 Outbox、MQTT 发布、ESP32 保存/切换、状态 `1/2/3/4/5`、
+跨租户拒绝、401 重放或 429 `Retry-After` 运行证据。新页面也无法在真实登录
+后进入，当前真机证据只证明安装和启动无回归；这些端到端门继续冻结。

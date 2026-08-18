@@ -7,6 +7,7 @@
                 "pages/DeviceListPage",
                 "pages/DeviceDetail",
                 "pages/DeviceCommandPage",
+                "pages/WifiConfigPage",
                 "pages/SessionListPage",
                 "pages/SessionDetailPage",
                 "pages/AlertListPage",

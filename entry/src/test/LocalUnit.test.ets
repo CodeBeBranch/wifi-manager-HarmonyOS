@@ -25,6 +25,14 @@ import {
   isValidIpv4Address,
   isValidMacAddress
 } from '../main/ets/model/DeviceCommandModels'
+import {
+  WifiConfigTask,
+  isValidWifiConfigRequestId,
+  isWifiConfigTerminal,
+  utf8ByteLength,
+  validateWifiCredentials,
+  wifiConfigStatusLabel
+} from '../main/ets/model/WifiConfigModels'
 import { NetworkSession, SessionPageResult } from '../main/ets/model/SessionModels'
 import { PlatformTenantPageResult } from '../main/ets/model/TenantModels'
 import { extractRefreshCookie, parseApiResponse } from '../main/ets/network/ApiParser'
@@ -445,6 +453,54 @@ export default function localUnitTest() {
       expect(isValidIpv4Address('192.168.04.1')).assertFalse()
       expect(isValidDeviceCommandRequestId('3f315dc0-55c8-4d95-93cf-d80de85aa80c')).assertTrue()
       expect(isValidDeviceCommandRequestId('invalid request id')).assertFalse()
+    })
+
+    it('parsesMockWifiConfigStageContractWithoutPassword', 0, () => {
+      const response = parseApiResponse<WifiConfigTask>(
+        '{"code":200,"message":"操作成功","data":{"wifiConfigId":91,"nodeId":101,' +
+          '"deviceCode":"EDGE-101","requestId":"3f315dc0-55c8-4d95-93cf-d80de85aa80c",' +
+          '"configVersion":7,"ssid":"Office-WiFi","passwordConfigured":true,' +
+          '"status":0,"statusName":"DISPATCHING","stagedTime":null,"activatedTime":null,' +
+          '"failureMessage":null,"createTime":"2026-08-18T11:30:00",' +
+          '"updateTime":"2026-08-18T11:30:00"}}',
+        200,
+        '{}',
+        ''
+      )
+      expect(response.data.configVersion).assertEqual(7)
+      expect(response.data.passwordConfigured).assertTrue()
+      expect(isValidWifiConfigRequestId(response.data.requestId)).assertTrue()
+      expect(JSON.stringify(response.data).includes('"password"')).assertFalse()
+    })
+
+    it('acceptsEmptyLatestWifiConfigTask', 0, () => {
+      const response = parseApiResponse<WifiConfigTask | null>(
+        '{"code":200,"message":"操作成功","data":null}',
+        200,
+        '{}',
+        ''
+      )
+      expect(response.data === null).assertTrue()
+    })
+
+    it('recognizesOnlyBackendWifiConfigTerminalStates', 0, () => {
+      expect(isWifiConfigTerminal(0)).assertFalse()
+      expect(isWifiConfigTerminal(1)).assertFalse()
+      expect(isWifiConfigTerminal(2)).assertTrue()
+      expect(isWifiConfigTerminal(3)).assertTrue()
+      expect(isWifiConfigTerminal(4)).assertFalse()
+      expect(isWifiConfigTerminal(5)).assertTrue()
+      expect(wifiConfigStatusLabel(4)).assertEqual('结果未知')
+    })
+
+    it('validatesWifiCredentialUtf8Boundaries', 0, () => {
+      expect(utf8ByteLength('办公室网络')).assertEqual(15)
+      expect(validateWifiCredentials('Office-WiFi', '')).assertEqual('')
+      expect(validateWifiCredentials('办公室网络', '12345678')).assertEqual('')
+      expect(validateWifiCredentials('一二三四五六七八九十一', '12345678').length > 0).assertTrue()
+      expect(validateWifiCredentials('Office-WiFi', '1234567').length > 0).assertTrue()
+      expect(validateWifiCredentials('Office-WiFi', '密码密码密码')).assertEqual('')
+      expect(isValidWifiConfigRequestId('invalid request id')).assertFalse()
     })
   })
 }
