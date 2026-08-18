@@ -584,3 +584,56 @@ SHA-256 330DAA69E90A0CC29E81A3BBE288CE1EA26DCB330719F54B1BCC148142479740
 配置入库、加密 Outbox、MQTT 发布、ESP32 保存/切换、状态 `1/2/3/4/5`、
 跨租户拒绝、401 重放或 429 `Retry-After` 运行证据。新页面也无法在真实登录
 后进入，当前真机证据只证明安装和启动无回归；这些端到端门继续冻结。
+
+## 18. 匿名账号注册与找回阶段
+
+2026-08-18 开始实现匿名账号注册与密码找回的移动端最小闭环：
+
+- 登录页增加“忘记密码”和“创建账号”入口，均进入简约双主题的单列移动页面。
+- 注册复用 `POST /auth/register`。移动端一次选择邮箱或手机号作为必填联系
+  方式，分别提交 `email/emailCode` 或 `phone/phoneCode`，另一组字段显式为
+  `null`；用户名为 3 到 20 位，密码为 6 到 20 位，昵称不能为空。
+- 找回复用 `POST /auth/reset-password`，请求只包含已绑定的 `target`、6 位
+  字母数字验证码和 `newPassword`。
+- 两个页面都复用 `POST /auth/codes`，注册场景为 `register`，找回场景为
+  `reset_password`。60 秒倒计时与当前联系方式绑定，联系方式变化立即清除旧
+  验证码和倒计时。
+- 密码、确认密码和验证码只保存在当前页面状态与当次请求对象中。请求开始、
+  失败、页面隐藏或离开时清除，不写 Preferences、HUKS 或日志。
+- 注册成功响应必须为 `RegisterResult.status=SUCCESS`；密码重置成功响应必须
+  保持 `ApiResponse<Void>.data=null`。其他成功形状按
+  `DEPENDENCY_PROTOCOL_INVALID` 拒绝。
+- Gateway 继续是唯一网络入口；匿名白名单、验证码投递、限流、账号冲突、
+  验证码消费幂等、密码不能与当前密码相同和 Session 撤销均以后端结果为准。
+- OAuth Provider 仍不进入本阶段。应用链接、系统浏览器授权和安全回跳方案未
+  冻结前，不展示无法完成的第三方登录入口。
+
+后端仍在升级，本阶段真实验证码投递、注册落库、默认成员 Outbox、账号冲突、
+密码重置、Refresh Session 撤销和 429 `Retry-After` 运行验收继续冻结。Mock
+只允许在 `entry/src/test` 验证请求和响应适配，不替代真实匿名流程。
+
+本阶段新增 3 项测试，覆盖匿名账号输入边界、`RegisterResult` 成功形状和
+`ApiResponse<Void>.data=null`，测试源共 35 项。最终结果：
+
+```text
+Tests run: 35, Failure: 0, Error: 0, Pass: 35, Ignore: 0
+BUILD SUCCESSFUL in 24 s 113 ms
+```
+
+使用保留的本机 `nova16` 调试签名完成完整 HAP 构建：
+
+```text
+BUILD SUCCESSFUL in 23 s 803 ms
+entry/build/default/outputs/default/entry-default-signed.hap
+SHA-256 58216E7BEC32B5135C22C8D3112D98C50FC8F5D14149558230F8D9BB6A02E73B
+```
+
+独立 `hap-sign-tool verify-app` 和 `verify-profile` 通过，确认 Signing Block
+v3、SHA-256 代码摘要、证书链和 debug Profile 有效，bundleName 为
+`com.plagod.WiFiEdgeManager`。
+
+最终 HAP 仅通过 `hdc install -r` 覆盖安装到唯一 USB 真机
+`88X9K26526081036`，随后启动本应用。应用 PID `9971` 等待后保持不变，限定
+该 PID 的 ERROR/FATAL 查询无输出。本轮日志缓冲没有返回生命周期或页面内容
+加载行，因此不把 ArkUI 首帧记为新增证据。未卸载、未清数据、未重启设备、
+未修改系统设置、未截图，也未删除手机文件。

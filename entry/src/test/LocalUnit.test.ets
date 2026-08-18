@@ -12,8 +12,13 @@ import {
 } from '../main/ets/model/AlertModels'
 import {
   AuthResult,
+  RegisterResult,
+  isEmailContact,
+  isPhoneContact,
   isValidContact,
-  isValidVerifyCode
+  isValidVerifyCode,
+  validateAccountPassword,
+  validateUsername
 } from '../main/ets/model/AuthModels'
 import { DeviceNode, DevicePageResult } from '../main/ets/model/DeviceModels'
 import {
@@ -108,6 +113,41 @@ export default function localUnitTest() {
         }
       }
       expect(captured === null ? 0 : captured.httpStatus).assertEqual(401)
+    })
+
+    it('validatesAnonymousAccountInputs', 0, () => {
+      expect(validateUsername('ab').length > 0).assertTrue()
+      expect(validateUsername('alice')).assertEqual('')
+      expect(validateAccountPassword('12345').length > 0).assertTrue()
+      expect(validateAccountPassword('123456')).assertEqual('')
+      expect(isEmailContact('alice@example.com')).assertTrue()
+      expect(isEmailContact('alice')).assertFalse()
+      expect(isPhoneContact('13800138000')).assertTrue()
+      expect(isPhoneContact('12800138000')).assertFalse()
+      expect(isValidVerifyCode('A1B2C3')).assertTrue()
+    })
+
+    it('parsesMockRegisterSuccessContract', 0, () => {
+      const response = parseApiResponse<RegisterResult>(
+        '{"code":200,"message":"注册成功","data":{' +
+          '"status":"SUCCESS","message":"注册成功","conflictFields":null}}',
+        200,
+        '{"X-Request-Id":"register_request_1234"}',
+        ''
+      )
+      expect(response.data.status).assertEqual('SUCCESS')
+      expect(response.data.conflictFields === null).assertTrue()
+      expect(response.requestId).assertEqual('register_request_1234')
+    })
+
+    it('acceptsNullResetPasswordResult', 0, () => {
+      const response = parseApiResponse<Object | null>(
+        '{"code":200,"message":"重置密码成功","data":null}',
+        200,
+        '{}',
+        ''
+      )
+      expect(response.data === null).assertTrue()
     })
 
     it('mapsMalformedEnvelopeToProtocolError', 0, () => {

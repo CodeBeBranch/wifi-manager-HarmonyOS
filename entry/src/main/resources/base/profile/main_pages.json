@@ -2,6 +2,8 @@
     "src":  [
                 "pages/Index",
                 "pages/LoginPage",
+                "pages/RegisterPage",
+                "pages/ForgotPasswordPage",
                 "pages/WorkspacePage",
                 "pages/PlatformTenantListPage",
                 "pages/DeviceListPage",

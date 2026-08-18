@@ -449,6 +449,25 @@ struct LoginPage {
           .borderRadius(8)
           .margin({ top: 20 })
           .onClick(() => this.submit())
+
+        Row({ space: 8 }) {
+          Button('忘记密码')
+            .layoutWeight(1)
+            .height(46)
+            .fontSize(14)
+            .fontColor(AppTheme.primary)
+            .backgroundColor(Color.Transparent)
+            .onClick(() => router.pushUrl({ url: 'pages/ForgotPasswordPage' }))
+          Button('创建账号')
+            .layoutWeight(1)
+            .height(46)
+            .fontSize(14)
+            .fontColor(AppTheme.primary)
+            .backgroundColor(Color.Transparent)
+            .onClick(() => router.pushUrl({ url: 'pages/RegisterPage' }))
+        }
+        .width('100%')
+        .margin({ top: 8 })
       }
       .width('100%')
       .constraintSize({ maxWidth: 480 })

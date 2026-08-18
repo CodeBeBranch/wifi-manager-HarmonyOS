@@ -3,6 +3,9 @@ import {
   AuthResult,
   LoginByCodeRequest,
   LoginRequest,
+  RegisterRequest,
+  RegisterResult,
+  ResetPasswordRequest,
   SendVerifyCodeRequest
 } from '../model/AuthModels'
 import { ApiSuccess } from '../model/ApiModels'
@@ -29,6 +32,22 @@ class AuthRepository {
     return httpClient.request<Object | null>({
       method: http.RequestMethod.POST,
       path: '/auth/codes',
+      body: JSON.stringify(request)
+    })
+  }
+
+  register(request: RegisterRequest): Promise<ApiSuccess<RegisterResult>> {
+    return httpClient.request<RegisterResult>({
+      method: http.RequestMethod.POST,
+      path: '/auth/register',
+      body: JSON.stringify(request)
+    })
+  }
+
+  resetPassword(request: ResetPasswordRequest): Promise<ApiSuccess<Object | null>> {
+    return httpClient.request<Object | null>({
+      method: http.RequestMethod.POST,
+      path: '/auth/reset-password',
       body: JSON.stringify(request)
     })
   }
