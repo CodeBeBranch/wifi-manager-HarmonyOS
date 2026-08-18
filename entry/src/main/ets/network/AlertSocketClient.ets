@@ -9,6 +9,8 @@ import {
 import { buildAlertWebSocketUrl, defaultAlertWebSocketOrigin } from '../config/RuntimeConfig'
 import { sessionStore } from '../session/SessionStore'
 import { runtimeSettings } from '../storage/RuntimeSettings'
+import { runtimeModeStore } from '../preview/RuntimeMode'
+import { networkTransportFactory } from './TransportFactory'
 
 export type AlertSocketStateListener = (state: AlertSocketState, attempt: number) => void
 export type AlertPushListener = (alert: AlertPushEvent) => void
@@ -26,6 +28,12 @@ class AlertSocketClient {
   private generation: number = 0
   private desired: boolean = false
   private paused: boolean = false
+
+  constructor() {
+    runtimeModeStore.addListener((): void => {
+      this.stop()
+    })
+  }
 
   start(stateListener: AlertSocketStateListener, alertListener: AlertPushListener): void {
     this.stateListener = stateListener
@@ -72,13 +80,19 @@ class AlertSocketClient {
 
   private connect(reconnecting: boolean): void {
     if (!this.desired || this.paused || this.socket !== null) return
+    try {
+      runtimeModeStore.guardNetwork('WEBSOCKET')
+    } catch (_) {
+      this.publishState('idle')
+      return
+    }
     const credentials = sessionStore.getAlertSocketCredentials()
     if (credentials === null) {
       this.publishState('auth-required')
       return
     }
 
-    const current = webSocket.createWebSocket()
+    const current = networkTransportFactory.createAlertSocket()
     const generation = ++this.generation
     this.socket = current
     this.publishState(reconnecting ? 'reconnecting' : 'connecting')

@@ -4,7 +4,7 @@ import {
   DeviceCommandRecord,
   isDeviceCommandTerminal
 } from '../model/DeviceCommandModels'
-import { deviceCommandRepository } from '../repository/DeviceCommandRepository'
+import { repositoryFactory } from '../repository/RepositoryFactory'
 
 const MAX_POLL_ATTEMPTS = 20
 const POLL_INTERVAL_MS = 3000
@@ -41,6 +41,8 @@ class DeviceCommandPoller {
   pause(): void {
     if (!this.desired || this.paused) return
     this.paused = true
+    this.generation += 1
+    this.busy = false
     this.clearTimer()
     this.publish('paused', null, null)
   }
@@ -79,7 +81,7 @@ class DeviceCommandPoller {
     this.publish('polling', null, null)
 
     try {
-      const record = await deviceCommandRepository.findByRequestId(deviceCode, requestId)
+      const record = await repositoryFactory.deviceCommand().findByRequestId(deviceCode, requestId)
       if (!this.isCurrent(generation, deviceCode, requestId)) return
       if (record !== null && isDeviceCommandTerminal(record.status)) {
         this.desired = false

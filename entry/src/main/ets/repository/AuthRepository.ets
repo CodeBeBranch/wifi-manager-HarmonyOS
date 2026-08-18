@@ -10,8 +10,9 @@ import {
 } from '../model/AuthModels'
 import { ApiSuccess } from '../model/ApiModels'
 import { httpClient } from '../network/HttpClient'
+import { runtimeModeStore } from '../preview/RuntimeMode'
 
-class AuthRepository {
+export class RealAuthRepository {
   login(request: LoginRequest): Promise<ApiSuccess<AuthResult>> {
     return httpClient.request<AuthResult>({
       method: http.RequestMethod.POST,
@@ -69,4 +70,50 @@ class AuthRepository {
   }
 }
 
-export const authRepository = new AuthRepository()
+export const realAuthRepository = new RealAuthRepository()
+
+export interface PublicAuthRepositoryContract {
+  sendVerifyCode(request: SendVerifyCodeRequest): Promise<ApiSuccess<Object | null>>
+  register(request: RegisterRequest): Promise<ApiSuccess<RegisterResult>>
+  resetPassword(request: ResetPasswordRequest): Promise<ApiSuccess<Object | null>>
+}
+
+class DemoPublicAuthRepository implements PublicAuthRepositoryContract {
+  async sendVerifyCode(_request: SendVerifyCodeRequest): Promise<ApiSuccess<Object | null>> {
+    return {
+      data: null,
+      refreshCookie: '',
+      requestId: 'demo-verify-code'
+    }
+  }
+
+  async register(_request: RegisterRequest): Promise<ApiSuccess<RegisterResult>> {
+    return {
+      data: {
+        status: 'SUCCESS',
+        message: '本地演示注册流程已完成',
+        conflictFields: null
+      },
+      refreshCookie: '',
+      requestId: 'demo-register'
+    }
+  }
+
+  async resetPassword(_request: ResetPasswordRequest): Promise<ApiSuccess<Object | null>> {
+    return {
+      data: null,
+      refreshCookie: '',
+      requestId: 'demo-reset-password'
+    }
+  }
+}
+
+class PublicAuthRepositoryFactory {
+  private readonly demo = new DemoPublicAuthRepository()
+
+  current(): PublicAuthRepositoryContract {
+    return runtimeModeStore.isDemo() ? this.demo : realAuthRepository
+  }
+}
+
+export const publicAuthRepositoryFactory = new PublicAuthRepositoryFactory()

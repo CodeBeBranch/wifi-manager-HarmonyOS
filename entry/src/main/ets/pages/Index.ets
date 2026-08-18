@@ -1,4 +1,4 @@
-import router from '@ohos.router'
+import { resetToLogin, resetToMain } from '../navigation/AppRouter'
 import { sessionStore } from '../session/SessionStore'
 import { AppTheme } from '../ui/AppTheme'
 
@@ -15,7 +15,7 @@ struct LaunchGatePage {
   private async restoreSession(): Promise<void> {
     const state = await sessionStore.restore()
     if (state === 'active') {
-      router.replaceUrl({ url: 'pages/WorkspacePage' })
+      resetToMain()
       return
     }
     if (state === 'step-up') {
@@ -28,7 +28,7 @@ struct LaunchGatePage {
       this.unavailable = true
       return
     }
-    router.replaceUrl({ url: 'pages/LoginPage' })
+    resetToLogin()
   }
 
   build() {
@@ -63,7 +63,7 @@ struct LaunchGatePage {
           .fontColor(AppTheme.primaryText)
           .backgroundColor(AppTheme.primaryStrong)
           .borderRadius(6)
-          .onClick(() => router.replaceUrl({ url: 'pages/LoginPage' }))
+          .onClick(() => resetToLogin())
       }
     }
     .width('100%')

@@ -2,12 +2,15 @@ import common from '@ohos.app.ability.common'
 import { ConfigurationConstant } from '@kit.AbilityKit'
 import { appPreferences } from './AppPreferences'
 
-export type ThemeMode = 'light' | 'dark'
+export type ThemeMode = 'system' | 'light' | 'dark'
 
 const THEME_MODE_KEY = 'theme_mode'
 
 export function normalizeThemeMode(value: string): ThemeMode {
-  return value === 'dark' ? 'dark' : 'light'
+  if (value === 'dark' || value === 'system') {
+    return value
+  }
+  return 'light'
 }
 
 class ThemeStore {
@@ -32,7 +35,9 @@ class ThemeStore {
       return
     }
     this.context.getApplicationContext().setColorMode(
-      mode === 'dark'
+      mode === 'system'
+        ? ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET
+        : mode === 'dark'
         ? ConfigurationConstant.ColorMode.COLOR_MODE_DARK
         : ConfigurationConstant.ColorMode.COLOR_MODE_LIGHT
     )

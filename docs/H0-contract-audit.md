@@ -637,3 +637,91 @@ v3、SHA-256 代码摘要、证书链和 debug Profile 有效，bundleName 为
 该 PID 的 ERROR/FATAL 查询无输出。本轮日志缓冲没有返回生命周期或页面内容
 加载行，因此不把 ArkUI 首帧记为新增证据。未卸载、未清数据、未重启设备、
 未修改系统设置、未截图，也未删除手机文件。
+
+## 19. Debug 本地界面预览阶段
+
+2026-08-18 为后端升级冻结期间的真机界面检查增加本地预览账号：
+
+```text
+username: superadmin
+password: 123456
+```
+
+该账号不是后端账号，不进入真实认证主流程，只在生成的
+`BuildProfile.DEBUG=true` 时可匹配。使用错误密码、联系方式登录或
+`DEBUG=false` 时均不匹配，并继续执行原有真实登录逻辑。release HAP 已单独
+构建通过，生成的 `BuildProfile.ets` 明确为
+`BUILD_MODE_NAME='release' / DEBUG=false`，因此正式构建不能进入该预览会话。
+
+预览登录只创建进程内 `SessionSnapshot`，不生成 Access Token、Refresh
+Cookie 或 Session，不写 HUKS、Preferences 和记住账号配置。退出或进程结束
+后预览会话消失。预览上下文固定为 `writable=false`，设备命令、WiFi 配置、
+断开 Session 和处理告警均在页面层禁用；统一会话层还会在任何遗漏路径进入
+HTTP 客户端前以 `PREVIEW_READ_ONLY` 拒绝请求。
+
+设备、Session、告警、平台组织、设备命令历史和 WiFi 配置最近任务使用
+`entry/src/main/ets/preview` 下的强类型本地预览数据。各 Repository 仅在当前
+内存预览会话激活时读取这些数据；Alert WebSocket 同样在创建 socket 前短路。
+因此该例外不发送 HTTP/WebSocket，不改变 Gateway、Cookie、Token、租户或
+统一错误契约，也不作为真实后端验收证据。此前“Mock 仅位于
+`entry/src/test`”的结论继续约束真实业务流程，但由本节明确增加
+debug-only、只读、无网络的界面预览例外。
+
+新增 4 项测试，覆盖精确凭据、release 开关、内存只读上下文、设备列表/详情
+和所有工作区页面的预览数据，总计：
+
+```text
+Tests run: 39, Failure: 0, Error: 0, Pass: 39, Ignore: 0
+BUILD SUCCESSFUL in 24 s 341 ms
+```
+
+debug、release 和最终 debug signed HAP 均完成真实构建；最终真机产物：
+
+```text
+entry/build/default/outputs/default/entry-default-signed.hap
+SHA-256 226CB251F87963B011C9BB7EBC07840577133B9DA66EEB529A808FFE99FE9883
+```
+
+独立 `verify-app` 和 `verify-profile` 通过，确认 Signing Block v3、代码摘要、
+证书链和 debug Profile 有效。最终 HAP 仅通过 `hdc install -r` 覆盖安装到
+唯一 USB 真机并成功启动；应用 PID `56790` 等待后仍存在，按该 PID 截取的
+最后 80 行日志中没有 ERROR/FATAL、未捕获异常或本应用失败匹配。未卸载、
+未清数据、未重启设备、未修改系统设置、未截图，也未删除手机文件。
+
+## 20. 移动端主框架与首页验收
+
+2026-08-18 将登录后的首屏从网页式功能入口重构为原生移动端主框架。底部固定
+四个一级导航，顺序为“首页、设备、告警、我的”，登录成功和冷启动会话恢复
+统一进入 `pages/MainPage`。旧 `WorkspacePage` 仅保留兼容重定向，详情页和
+权限回退也统一返回新主框架。
+
+首页按当前后端租户上下文聚合设备总数、在线 Session 数和未处理告警数，并
+复用 `DeviceRepository`、`SessionRepository`、`AlertRepository` 的真实查询；
+没有新增 API、业务模型或服务端状态。平台上下文只提供组织选择入口，成员账号
+只显示其有权访问的连接能力。设备和告警作为一级导航直接复用原有搜索、筛选、
+分页和详情能力；“我的”集中账号信息、组织上下文、Session 入口、平台组织切换、
+日间/夜间模式和退出登录。
+
+新增 `MainNavigation.ets` 统一平台、租户、托管租户和管理员权限判断，并增加
+2 项单元测试覆盖平台管理员与普通成员边界。最终 ArkTS 测试：
+
+```text
+Tests run: 41, Failure: 0, Error: 0, Pass: 41, Ignore: 0
+BUILD SUCCESSFUL in 13 s 489 ms
+```
+
+debug 和 release HAP 均完成真实构建；release 生成配置确认
+`BUILD_MODE_NAME='release' / DEBUG=false`。最终 debug signed HAP：
+
+```text
+BUILD SUCCESSFUL in 10 s 756 ms
+entry/build/default/outputs/default/entry-default-signed.hap
+SHA-256 5FD503AB2BE530319325540E4E55D415399D52EE48BC68DFBDD9F9C25DCDDEA8
+```
+
+独立 `verify-app` 和 `verify-profile` 通过，Profile 类型为 `debug`，
+bundleName 为 `com.plagod.WiFiEdgeManager`，授权设备信息存在。最终 HAP
+仅通过 `hdc install -r` 覆盖安装到唯一 USB 真机并成功启动；应用 PID
+`15817` 等待后保持不变。按 PID 请求有限日志时设备没有返回日志行，因此不把
+页面首帧记为自动化视觉证据。未卸载、未清数据、未重启设备、未修改系统设置、
+未截图，也未删除手机文件。

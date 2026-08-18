@@ -1,5 +1,6 @@
 import router from '@ohos.router'
 import { SessionSnapshot, anonymousSnapshot } from '../model/AuthModels'
+import { resetToLogin, resetToMain } from '../navigation/AppRouter'
 import { sessionStore } from '../session/SessionStore'
 import { AppTheme } from '../ui/AppTheme'
 import { ThemeSelector } from '../ui/ThemeSelector'
@@ -11,12 +12,10 @@ struct WorkspacePage {
   @State loggingOut: boolean = false
   @State contextSwitching: boolean = false
   @State errorMessage: string = ''
+  @State previewMode: boolean = false
 
   aboutToAppear(): void {
-    this.snapshot = sessionStore.getSnapshot()
-    if (!this.snapshot.authenticated) {
-      router.replaceUrl({ url: 'pages/LoginPage' })
-    }
+    resetToMain()
   }
 
   private hasTenantContext(): boolean {
@@ -58,7 +57,7 @@ struct WorkspacePage {
       this.errorMessage = ''
     } finally {
       this.loggingOut = false
-      router.replaceUrl({ url: 'pages/LoginPage' })
+      resetToLogin()
     }
   }
 
@@ -102,6 +101,19 @@ struct WorkspacePage {
           .fontColor(AppTheme.muted)
           .width('100%')
           .margin({ top: 6 })
+
+        if (this.previewMode) {
+          Text('本地预览 · 只读')
+            .fontSize(12)
+            .fontWeight(FontWeight.Medium)
+            .fontColor(AppTheme.infoText)
+            .width('100%')
+            .padding({ left: 10, right: 10, top: 7, bottom: 7 })
+            .backgroundColor(AppTheme.surfaceMuted)
+            .border({ width: 1, color: AppTheme.info })
+            .borderRadius(6)
+            .margin({ top: 12 })
+        }
 
         Text('常用功能')
           .fontSize(13)

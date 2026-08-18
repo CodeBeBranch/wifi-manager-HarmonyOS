@@ -1,4 +1,5 @@
 import { describe, it, expect } from '@ohos/hypium'
+import http from '@ohos.net.http'
 import {
   buildAlertWebSocketUrl,
   normalizeGatewayUrl
@@ -13,6 +14,7 @@ import {
 import {
   AuthResult,
   RegisterResult,
+  SessionSnapshot,
   isEmailContact,
   isPhoneContact,
   isValidContact,
@@ -40,12 +42,55 @@ import {
 } from '../main/ets/model/WifiConfigModels'
 import { NetworkSession, SessionPageResult } from '../main/ets/model/SessionModels'
 import { PlatformTenantPageResult } from '../main/ets/model/TenantModels'
+import { resolveNoticeTargetRoute } from '../main/ets/navigation/AppRouter'
 import { extractRefreshCookie, parseApiResponse } from '../main/ets/network/ApiParser'
+import { httpClient } from '../main/ets/network/HttpClient'
+import { alertSocketClient } from '../main/ets/network/AlertSocketClient'
+import { networkTransportFactory } from '../main/ets/network/TransportFactory'
+import {
+  previewAlertDetail,
+  previewAlertPage,
+  previewDeviceCommandPage,
+  previewDeviceDetail,
+  previewDevicePage,
+  previewLatestWifiConfig,
+  previewSessionPage,
+  previewTenantPage
+} from '../main/ets/preview/PreviewData'
+import {
+  PreviewSession,
+  previewAccounts,
+  previewCodeCredentialMatches,
+  previewCredentialMatches
+} from '../main/ets/preview/PreviewMode'
+import {
+  normalizeRuntimeMode,
+  RuntimeMode,
+  runtimeModeStore
+} from '../main/ets/preview/RuntimeMode'
+import { repositoryFactory } from '../main/ets/repository/RepositoryFactory'
+import { publicAuthRepositoryFactory } from '../main/ets/repository/AuthRepository'
 import { normalizeThemeMode } from '../main/ets/storage/ThemeStore'
 import { normalizeLoginMode } from '../main/ets/storage/LoginPreferenceStore'
+import {
+  canReadAdminWorkspace,
+  hasTenantWorkspace,
+  isManagedTenantWorkspace,
+  isPlatformWorkspace,
+  mainRootRouteId,
+  mainTabKey,
+  mainTabRenderKey,
+  mainTabs,
+  roleLabel,
+  workspaceTitle
+} from '../main/ets/ui/MainNavigation'
 
 interface TestData {
   value: string
+}
+
+class StubMqttTransport {
+  readonly channel: string = 'MQTT'
 }
 
 interface PlatformTenantEnvelopeFixture {
@@ -541,6 +586,383 @@ export default function localUnitTest() {
       expect(validateWifiCredentials('Office-WiFi', '1234567').length > 0).assertTrue()
       expect(validateWifiCredentials('Office-WiFi', '密码密码密码')).assertEqual('')
       expect(isValidWifiConfigRequestId('invalid request id')).assertFalse()
+    })
+
+    it('enablesOnlyTheThreeExactDebugPreviewCredentials', 0, () => {
+      expect(previewAccounts().length).assertEqual(3)
+      expect(previewCredentialMatches('username', 'superadmin', '123456', true)).assertTrue()
+      expect(previewCredentialMatches('username', 'tenantadmin', '123456', true)).assertTrue()
+      expect(previewCredentialMatches('username', 'member', '123456', true)).assertTrue()
+      expect(previewCredentialMatches('username', 'superadmin', 'wrong', true)).assertFalse()
+      expect(previewCredentialMatches('username', 'unknown', '123456', true)).assertFalse()
+      expect(previewCredentialMatches('contact', 'superadmin', '123456', true)).assertFalse()
+      expect(previewCredentialMatches('username', 'superadmin', '123456', false)).assertFalse()
+      expect(previewCodeCredentialMatches('13800138000', '123456', true)).assertTrue()
+      expect(previewCodeCredentialMatches('demo@wifi.local', '123456', true)).assertTrue()
+      expect(previewCodeCredentialMatches('13800138000', '000000', true)).assertFalse()
+    })
+
+    it('keepsSuperAdminPreviewSessionInPlatformWorkspace', 0, () => {
+      const preview = new PreviewSession()
+      const snapshot = preview.tryLogin({
+        loginType: 'username',
+        account: 'superadmin',
+        password: '123456'
+      })
+      expect(snapshot?.authenticated ?? false).assertTrue()
+      expect(snapshot?.role ?? -1).assertEqual(0)
+      expect(snapshot?.context?.contextType ?? '').assertEqual('PLATFORM')
+      const tenant = preview.enterTenant('preview-tenant-02')
+      expect(tenant.context?.tenantId ?? '').assertEqual('preview-tenant-02')
+      expect(tenant.context?.contextType ?? '').assertEqual('PLATFORM_TENANT')
+      expect(tenant.context?.writable ?? false).assertTrue()
+      const platform = preview.returnToPlatform()
+      expect(platform.context?.contextType ?? '').assertEqual('PLATFORM')
+
+      preview.clear()
+      expect(preview.getSnapshot().authenticated).assertFalse()
+    })
+
+    it('keepsTenantAdminAndMemberInsideTenantWorkspace', 0, () => {
+      const preview = new PreviewSession()
+      const admin = preview.tryLogin({
+        loginType: 'username',
+        account: 'tenantadmin',
+        password: '123456'
+      })
+      expect(admin?.role ?? -1).assertEqual(1)
+      expect(admin?.context?.contextType ?? '').assertEqual('TENANT')
+      expect(preview.enterTenant('preview-tenant-02').context?.tenantId ?? '')
+        .assertEqual('preview-tenant-01')
+
+      preview.clear()
+      const member = preview.tryLogin({
+        loginType: 'username',
+        account: 'member',
+        password: '123456'
+      })
+      expect(member?.role ?? -1).assertEqual(2)
+      expect(member?.context?.tenantRole ?? '').assertEqual('MEMBER')
+      expect(member?.context?.contextType ?? '').assertEqual('TENANT')
+    })
+
+    it('restoresPersistedPreviewSnapshotWithoutRealCredentials', 0, () => {
+      const source = new PreviewSession()
+      const snapshot = source.tryLogin({
+        loginType: 'username',
+        account: 'superadmin',
+        password: '123456'
+      })
+      expect(snapshot === null).assertFalse()
+      if (snapshot === null) return
+
+      const restored = new PreviewSession()
+      expect(restored.restore(snapshot)).assertTrue()
+      expect(restored.getSnapshot().username).assertEqual('superadmin')
+      expect(restored.getSnapshot().context?.contextType ?? '').assertEqual('PLATFORM')
+    })
+
+    it('providesPreviewDeviceListAndDetailWithoutBackendData', 0, () => {
+      const page = previewDevicePage(1, 20, '上海')
+      const detail = previewDeviceDetail('101')
+      expect(page.total).assertEqual(1)
+      expect(page.records[0].deviceCode).assertEqual('EDGE-SH-01')
+      expect(detail?.name ?? '').assertEqual('上海办公室主网关')
+      expect(previewDeviceDetail('999') === null).assertTrue()
+    })
+
+    it('providesReadOnlyPreviewDataForAllWorkspacePages', 0, () => {
+      const sessions = previewSessionPage({
+        current: 1,
+        size: 20,
+        mac: '',
+        nodeId: '',
+        userId: '',
+        status: '1'
+      })
+      const memberSessions = previewSessionPage({
+        current: 1,
+        size: 20,
+        mac: '',
+        nodeId: '',
+        userId: '',
+        status: '1'
+      }, false)
+      const alerts = previewAlertPage({
+        current: 1,
+        size: 20,
+        level: '',
+        status: '0',
+        mac: ''
+      })
+      const tenants = previewTenantPage(1, 20, '')
+      const commands = previewDeviceCommandPage({
+        current: 1,
+        size: 20,
+        requestId: '',
+        deviceCode: 'EDGE-SH-01'
+      })
+      const wifiTask = previewLatestWifiConfig('EDGE-SH-01')
+
+      expect(sessions.total).assertEqual(2)
+      expect(memberSessions.total).assertEqual(1)
+      expect(memberSessions.records[0].userId ?? 0).assertEqual(201)
+      expect(alerts.total).assertEqual(2)
+      expect(previewAlertDetail(alerts.records[0].id)?.status ?? -1).assertEqual(0)
+      expect(tenants.total).assertEqual(2)
+      expect(commands.total).assertEqual(2)
+      expect(wifiTask?.status ?? -1).assertEqual(2)
+    })
+
+    it('resolvesMainNavigationForPlatformAndManagedTenantContexts', 0, () => {
+      const preview = new PreviewSession()
+      const platform = preview.tryLogin({
+        loginType: 'username',
+        account: 'superadmin',
+        password: '123456'
+      })
+      expect(platform === null).assertFalse()
+      if (platform === null) return
+      expect(isPlatformWorkspace(platform)).assertTrue()
+      expect(hasTenantWorkspace(platform)).assertFalse()
+      expect(canReadAdminWorkspace(platform)).assertFalse()
+      expect(workspaceTitle(platform)).assertEqual('系统管理')
+      expect(mainTabs(platform).length).assertEqual(5)
+      expect(mainTabKey(platform, 1)).assertEqual('ORGANIZATIONS')
+      expect(mainTabKey(platform, 4)).assertEqual('ME')
+      expect(mainRootRouteId(platform, 0)).assertEqual('platform/home')
+      expect(mainRootRouteId(platform, 1)).assertEqual('platform/tenants')
+      expect(mainRootRouteId(platform, 2)).assertEqual('platform/accounts')
+      expect(mainRootRouteId(platform, 3)).assertEqual('platform/services')
+      expect(mainRootRouteId(platform, 2) === mainRootRouteId(platform, 3)).assertFalse()
+      expect(mainRootRouteId(platform, 3) === mainRootRouteId(platform, 2)).assertFalse()
+      expect(mainRootRouteId(platform, 4)).assertEqual('me/home')
+      expect(mainTabRenderKey(platform, mainTabs(platform)[3]))
+        .assertEqual('0:PLATFORM:platform/services')
+      expect(mainTabRenderKey(platform, mainTabs(platform)[4]))
+        .assertEqual('0:PLATFORM:me/home')
+
+      const tenant = preview.enterTenant('preview-tenant-01')
+      expect(hasTenantWorkspace(tenant)).assertTrue()
+      expect(canReadAdminWorkspace(tenant)).assertTrue()
+      expect(isManagedTenantWorkspace(tenant)).assertTrue()
+      expect(workspaceTitle(tenant)).assertEqual('边缘网络实验室')
+      expect(mainTabs(tenant).length).assertEqual(5)
+      expect(mainTabKey(tenant, 1)).assertEqual('DEVICES')
+      expect(mainTabKey(tenant, 3)).assertEqual('SERVICES')
+      expect(mainRootRouteId(tenant, 0)).assertEqual('tenant/home')
+      expect(mainRootRouteId(tenant, 1)).assertEqual('tenant/devices')
+      expect(mainRootRouteId(tenant, 2)).assertEqual('tenant/alerts')
+      expect(mainRootRouteId(tenant, 3)).assertEqual('tenant/services')
+      expect(mainRootRouteId(tenant, 4)).assertEqual('me/home')
+    })
+
+    it('keepsMemberMainNavigationInsideTenantBoundaries', 0, () => {
+      const member: SessionSnapshot = {
+        authenticated: true,
+        accountState: 'ACTIVE',
+        userId: 'member-1',
+        username: 'member',
+        nickname: '普通成员',
+        role: 2,
+        context: {
+          contextType: 'TENANT',
+          tenantId: 'tenant-1',
+          tenantCode: 'tenant-1',
+          tenantName: '成员工作区',
+          tenantRole: 'MEMBER',
+          contextVersion: 1,
+          memberContextVersion: 1,
+          tenantStatus: 'ACTIVE',
+          writable: true,
+          authorities: ['SESSION_READ']
+        }
+      }
+      expect(hasTenantWorkspace(member)).assertTrue()
+      expect(canReadAdminWorkspace(member)).assertFalse()
+      expect(isPlatformWorkspace(member)).assertFalse()
+      expect(roleLabel(member.role)).assertEqual('成员')
+      expect(workspaceTitle(member)).assertEqual('成员工作区')
+      expect(mainTabs(member).length).assertEqual(4)
+      expect(mainTabKey(member, 1)).assertEqual('CONNECTIONS')
+      expect(mainTabKey(member, 3)).assertEqual('ME')
+      expect(mainRootRouteId(member, 0)).assertEqual('member/home')
+      expect(mainRootRouteId(member, 1)).assertEqual('member/connections')
+      expect(mainRootRouteId(member, 2)).assertEqual('member/services')
+      expect(mainRootRouteId(member, 3)).assertEqual('me/home')
+      expect(mainRootRouteId(member, 1) === mainRootRouteId(member, 2)).assertFalse()
+      expect(mainTabRenderKey(member, mainTabs(member)[2]))
+        .assertEqual('2:TENANT:member/services')
+      expect(mainTabRenderKey(member, mainTabs(member)[3]))
+        .assertEqual('2:TENANT:me/home')
+    })
+
+    it('normalizesPersistedRuntimeModeWithoutFallingBackToDemo', 0, () => {
+      expect(normalizeRuntimeMode('DEMO')).assertEqual(RuntimeMode.DEMO)
+      expect(normalizeRuntimeMode('REAL')).assertEqual(RuntimeMode.REAL)
+      expect(normalizeRuntimeMode('invalid')).assertEqual(RuntimeMode.REAL)
+    })
+
+    it('restoresPreviewAuthoritiesFromFixedAccountDefinitions', 0, () => {
+      const restored = new PreviewSession()
+      expect(restored.restore({
+        authenticated: true,
+        accountState: 'ACTIVE',
+        userId: 'forged',
+        username: 'member',
+        nickname: '普通成员',
+        role: 0,
+        context: {
+          contextType: 'PLATFORM',
+          tenantId: '',
+          tenantCode: '',
+          tenantName: '系统管理',
+          tenantRole: 'SUPER_ADMIN',
+          contextVersion: 99,
+          memberContextVersion: 99,
+          tenantStatus: 'ACTIVE',
+          writable: true,
+          authorities: ['PLATFORM_ADMIN']
+        }
+      })).assertTrue()
+      const snapshot = restored.getSnapshot()
+      expect(snapshot.role).assertEqual(2)
+      expect(snapshot.context?.contextType ?? '').assertEqual('TENANT')
+      expect(snapshot.context?.tenantRole ?? '').assertEqual('MEMBER')
+    })
+
+    it('allowsOnlyRegisteredAccountNoticeTargets', 0, () => {
+      expect(resolveNoticeTargetRoute('pages/ProfilePage')).assertEqual('pages/ProfilePage')
+      expect(resolveNoticeTargetRoute('pages/SecurityPage')).assertEqual('pages/SecurityPage')
+      expect(resolveNoticeTargetRoute('pages/LoginPage')).assertEqual('pages/MainPage')
+      expect(resolveNoticeTargetRoute('pages/UnknownPage')).assertEqual('pages/MainPage')
+    })
+
+    it('keepsAllThreePreviewAccountJourneysOffline', 0, async () => {
+      runtimeModeStore.activateDemo()
+      runtimeModeStore.resetNetworkSentinel()
+      networkTransportFactory.resetCounters()
+
+      for (const account of previewAccounts()) {
+        const preview = new PreviewSession()
+        const snapshot = preview.tryLogin({
+          loginType: 'username',
+          account: account.account,
+          password: '123456'
+        })
+        expect(snapshot === null).assertFalse()
+        if (snapshot === null) continue
+
+        if (snapshot.role === 0) {
+          await repositoryFactory.tenant().listPlatformTenants(1, 20, '')
+          preview.enterTenant('preview-tenant-01')
+          await repositoryFactory.device().list(1, 20, '')
+          await repositoryFactory.alert().list({
+            current: 1,
+            size: 20,
+            level: '',
+            status: '',
+            mac: ''
+          })
+          preview.returnToPlatform()
+        } else if (snapshot.role === 1) {
+          await repositoryFactory.device().list(1, 20, '')
+          await repositoryFactory.session().list({
+            current: 1,
+            size: 20,
+            mac: '',
+            nodeId: '',
+            userId: '',
+            status: ''
+          }, true)
+        } else {
+          await repositoryFactory.session().list({
+            current: 1,
+            size: 20,
+            mac: '',
+            nodeId: '',
+            userId: '',
+            status: ''
+          }, false)
+        }
+        preview.clear()
+        expect(preview.getSnapshot().authenticated).assertFalse()
+      }
+
+      expect(runtimeModeStore.getBlockedNetworkAttempts()).assertEqual(0)
+      expect(networkTransportFactory.snapshot().http).assertEqual(0)
+      expect(networkTransportFactory.snapshot().webSocket).assertEqual(0)
+      expect(networkTransportFactory.snapshot().mqtt).assertEqual(0)
+      runtimeModeStore.activateReal()
+    })
+
+    it('usesDemoRepositoryWithoutOutboundAttempts', 0, async () => {
+      runtimeModeStore.activateDemo()
+      runtimeModeStore.resetNetworkSentinel()
+      networkTransportFactory.resetCounters()
+      expect(runtimeModeStore.getMode()).assertEqual(RuntimeMode.DEMO)
+      const devices = await repositoryFactory.device().list(1, 20, '')
+      expect(devices.records.length > 0).assertTrue()
+      const registration = await publicAuthRepositoryFactory.current().register({
+        username: 'local-demo',
+        password: '123456',
+        nickname: '本地演示',
+        email: 'local@wifi.local',
+        phone: null,
+        emailCode: '123456',
+        phoneCode: null
+      })
+      expect(registration.data.status).assertEqual('SUCCESS')
+      expect(runtimeModeStore.getBlockedNetworkAttempts()).assertEqual(0)
+      expect(networkTransportFactory.snapshot().http).assertEqual(0)
+      expect(networkTransportFactory.snapshot().webSocket).assertEqual(0)
+      expect(networkTransportFactory.snapshot().mqtt).assertEqual(0)
+
+      let httpBlocked = false
+      try {
+        await httpClient.request<Object | null>({
+          method: http.RequestMethod.GET,
+          path: '/must-not-leave-device'
+        })
+      } catch (error) {
+        httpBlocked = error instanceof ApiError && error.errorKey === 'DEMO_NETWORK_BLOCKED'
+      }
+      expect(httpBlocked).assertTrue()
+      expect(runtimeModeStore.getBlockedNetworkAttempts()).assertEqual(1)
+
+      alertSocketClient.start((): void => {}, (): void => {})
+      alertSocketClient.stop()
+      expect(runtimeModeStore.getBlockedNetworkAttempts()).assertEqual(2)
+      expect(runtimeModeStore.getBlockedChannels()[0]).assertEqual('HTTP')
+      expect(runtimeModeStore.getBlockedChannels()[1]).assertEqual('WEBSOCKET')
+      expect(networkTransportFactory.snapshot().http).assertEqual(0)
+      expect(networkTransportFactory.snapshot().webSocket).assertEqual(0)
+
+      let mqttFactoryCalled = false
+      let mqttBlocked = false
+      try {
+        networkTransportFactory.createMqtt<StubMqttTransport>(() => {
+          mqttFactoryCalled = true
+          return new StubMqttTransport()
+        })
+      } catch (error) {
+        mqttBlocked = error instanceof ApiError && error.errorKey === 'DEMO_NETWORK_BLOCKED'
+      }
+      expect(mqttBlocked).assertTrue()
+      expect(mqttFactoryCalled).assertFalse()
+      expect(runtimeModeStore.getBlockedNetworkAttempts()).assertEqual(3)
+      expect(runtimeModeStore.getBlockedChannels()[2]).assertEqual('MQTT')
+      expect(networkTransportFactory.snapshot().mqtt).assertEqual(0)
+
+      runtimeModeStore.activateReal()
+      expect(runtimeModeStore.getMode()).assertEqual(RuntimeMode.REAL)
+      expect(runtimeModeStore.getBlockedNetworkAttempts()).assertEqual(0)
+      const mqtt = networkTransportFactory.createMqtt<StubMqttTransport>(
+        (): StubMqttTransport => new StubMqttTransport()
+      )
+      expect(mqtt.channel).assertEqual('MQTT')
+      expect(networkTransportFactory.snapshot().mqtt).assertEqual(1)
+      networkTransportFactory.resetCounters()
     })
   })
 }

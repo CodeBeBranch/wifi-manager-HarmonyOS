@@ -1,4 +1,5 @@
 import router from '@ohos.router'
+import { resetToLogin } from '../navigation/AppRouter'
 import { ApiError } from '../model/ApiModels'
 import {
   ResetPasswordRequest,
@@ -6,7 +7,7 @@ import {
   isValidVerifyCode,
   validateAccountPassword
 } from '../model/AuthModels'
-import { authRepository } from '../repository/AuthRepository'
+import { publicAuthRepositoryFactory } from '../repository/AuthRepository'
 import { AppTheme } from '../ui/AppTheme'
 import { ThemeSelector } from '../ui/ThemeSelector'
 
@@ -89,7 +90,7 @@ struct ForgotPasswordPage {
     const pageVersion = this.pageVersion
     this.sendingCode = true
     try {
-      await authRepository.sendVerifyCode({
+      await publicAuthRepositoryFactory.current().sendVerifyCode({
         target: target,
         scene: 'reset_password'
       })
@@ -125,7 +126,7 @@ struct ForgotPasswordPage {
       newPassword: this.newPassword
     }
     this.loading = true
-    const pending = authRepository.resetPassword(request)
+    const pending = publicAuthRepositoryFactory.current().resetPassword(request)
     this.clearSecrets()
 
     try {
@@ -230,7 +231,7 @@ struct ForgotPasswordPage {
             .backgroundColor(AppTheme.primaryStrong)
             .borderRadius(8)
             .margin({ top: 20 })
-            .onClick(() => router.replaceUrl({ url: 'pages/LoginPage' }))
+            .onClick(() => resetToLogin())
         } else {
           Text('手机号 / 邮箱')
             .fontSize(13)

@@ -4,7 +4,7 @@ import {
   WifiConfigTask,
   isWifiConfigTerminal
 } from '../model/WifiConfigModels'
-import { wifiConfigRepository } from '../repository/WifiConfigRepository'
+import { repositoryFactory } from '../repository/RepositoryFactory'
 
 const MAX_POLL_ATTEMPTS = 20
 const POLL_INTERVAL_MS = 3000
@@ -41,6 +41,8 @@ class WifiConfigPoller {
   pause(): void {
     if (!this.desired || this.paused) return
     this.paused = true
+    this.generation += 1
+    this.busy = false
     this.clearTimer()
     this.publish('paused', null, null)
   }
@@ -79,7 +81,7 @@ class WifiConfigPoller {
     this.publish('polling', null, null)
 
     try {
-      const task = await wifiConfigRepository.find(deviceCode, requestId)
+      const task = await repositoryFactory.wifiConfig().find(deviceCode, requestId)
       if (!this.isCurrent(generation, deviceCode, requestId)) return
       if (isWifiConfigTerminal(task.status)) {
         this.desired = false

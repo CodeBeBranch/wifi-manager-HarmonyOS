@@ -1,12 +1,13 @@
 import router from '@ohos.router'
 import { ApiError } from '../model/ApiModels'
+import { resetToLogin } from '../navigation/AppRouter'
 import { DeviceNode } from '../model/DeviceModels'
-import { deviceRepository } from '../repository/DeviceRepository'
+import { repositoryFactory } from '../repository/RepositoryFactory'
 import { AppTheme } from '../ui/AppTheme'
 
-@Entry
 @Component
-struct DeviceListPage {
+export struct DeviceListContent {
+  @Prop embedded: boolean = false
   @State devices: DeviceNode[] = []
   @State keyword: string = ''
   @State appliedKeyword: string = ''
@@ -28,7 +29,7 @@ struct DeviceListPage {
     this.loading = true
     this.errorMessage = ''
     try {
-      const result = await deviceRepository.list(page, this.pageSize, this.appliedKeyword)
+      const result = await repositoryFactory.device().list(page, this.pageSize, this.appliedKeyword)
       if (requestVersion !== this.requestVersion) return
       this.devices = result.records ?? []
       this.current = Number(result.current)
@@ -36,7 +37,7 @@ struct DeviceListPage {
       this.total = Number(result.total)
     } catch (error) {
       if (error instanceof ApiError && error.httpStatus === 401) {
-        router.replaceUrl({ url: 'pages/LoginPage' })
+        resetToLogin()
         return
       }
       if (requestVersion !== this.requestVersion) return
@@ -66,13 +67,15 @@ struct DeviceListPage {
   build() {
     Column() {
       Row({ space: 12 }) {
-        Button('‹')
-          .width(44).height(44).fontSize(24)
-          .fontColor(AppTheme.textSoft).backgroundColor(AppTheme.surfaceRaised)
-          .border({ width: 1, color: AppTheme.border }).borderRadius(6)
-          .onClick(() => router.back())
+        if (!this.embedded) {
+          Button('‹')
+            .width(44).height(44).fontSize(24)
+            .fontColor(AppTheme.textSoft).backgroundColor(AppTheme.surfaceRaised)
+            .border({ width: 1, color: AppTheme.border }).borderRadius(6)
+            .onClick(() => router.back())
+        }
         Column({ space: 2 }) {
-          Text('网络工作区').fontSize(11).fontColor(AppTheme.primary)
+          Text(this.embedded ? '网络资源' : '网络工作区').fontSize(11).fontColor(AppTheme.primary)
           Text('设备').fontSize(23).fontWeight(FontWeight.Bold).fontColor(AppTheme.text)
         }
         .alignItems(HorizontalAlign.Start)
@@ -185,7 +188,19 @@ struct DeviceListPage {
     }
     .width('100%')
     .height('100%')
-    .padding({ left: 16, right: 16, top: 20, bottom: 16 })
+    .padding({ left: 16, right: 16, top: this.embedded ? 14 : 20, bottom: 12 })
     .backgroundColor(AppTheme.background)
+  }
+}
+
+@Entry
+@Component
+struct DeviceListPage {
+  build() {
+    Column() {
+      DeviceListContent({ embedded: false })
+    }
+    .width('100%')
+    .height('100%')
   }
 }

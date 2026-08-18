@@ -8,6 +8,8 @@ import { themeStore } from '../storage/ThemeStore';
 import { alertSocketClient } from '../network/AlertSocketClient';
 import { deviceCommandPoller } from '../network/DeviceCommandPoller';
 import { wifiConfigPoller } from '../network/WifiConfigPoller';
+import { runtimeModeStore } from '../preview/RuntimeMode';
+import { httpClient } from '../network/HttpClient';
 
 const DOMAIN = 0x0000;
 
@@ -17,6 +19,7 @@ export default class EntryAbility extends UIAbility {
   }
 
   onDestroy(): void {
+    httpClient.cancelAll();
     alertSocketClient.stop();
     deviceCommandPoller.stop();
     wifiConfigPoller.stop();
@@ -32,6 +35,7 @@ export default class EntryAbility extends UIAbility {
     try {
       await appPreferences.initialize(this.context);
       await themeStore.initialize(this.context);
+      await runtimeModeStore.initialize();
       await runtimeSettings.initialize();
       await sessionStore.initialize();
     } catch (error) {
@@ -57,18 +61,24 @@ export default class EntryAbility extends UIAbility {
   }
 
   onForeground(): void {
-    alertSocketClient.resume();
-    deviceCommandPoller.resume();
-    wifiConfigPoller.resume();
+    this.resumeRuntime();
     // Ability has brought to foreground
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onForeground');
   }
 
   onBackground(): void {
+    httpClient.cancelAll();
     alertSocketClient.pause();
     deviceCommandPoller.pause();
     wifiConfigPoller.pause();
     // Ability has back to background
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onBackground');
+  }
+
+  private async resumeRuntime(): Promise<void> {
+    await sessionStore.refreshOnForeground();
+    alertSocketClient.resume();
+    deviceCommandPoller.resume();
+    wifiConfigPoller.resume();
   }
 }

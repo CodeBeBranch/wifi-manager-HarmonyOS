@@ -1,4 +1,5 @@
 import router from '@ohos.router'
+import { resetToLogin } from '../navigation/AppRouter'
 import { ApiError } from '../model/ApiModels'
 import {
   RegisterRequest,
@@ -8,7 +9,7 @@ import {
   validateAccountPassword,
   validateUsername
 } from '../model/AuthModels'
-import { authRepository } from '../repository/AuthRepository'
+import { publicAuthRepositoryFactory } from '../repository/AuthRepository'
 import { AppTheme } from '../ui/AppTheme'
 import { ThemeSelector } from '../ui/ThemeSelector'
 
@@ -115,7 +116,7 @@ struct RegisterPage {
     const pageVersion = this.pageVersion
     this.sendingCode = true
     try {
-      await authRepository.sendVerifyCode({
+      await publicAuthRepositoryFactory.current().sendVerifyCode({
         target: target,
         scene: 'register'
       })
@@ -156,7 +157,7 @@ struct RegisterPage {
       phoneCode: this.contactType === 'phone' ? this.verifyCode.trim() : null
     }
     this.loading = true
-    const pending = authRepository.register(request)
+    const pending = publicAuthRepositoryFactory.current().register(request)
     this.clearSecrets()
 
     try {
@@ -263,7 +264,7 @@ struct RegisterPage {
             .backgroundColor(AppTheme.primaryStrong)
             .borderRadius(8)
             .margin({ top: 20 })
-            .onClick(() => router.replaceUrl({ url: 'pages/LoginPage' }))
+            .onClick(() => resetToLogin())
         } else {
           Text('用户名')
             .fontSize(13)

@@ -10,14 +10,49 @@ import {
   StoredSession
 } from '../model/AuthModels'
 import { httpClient } from '../network/HttpClient'
-import { authRepository } from '../repository/AuthRepository'
+import { PreviewSession } from '../preview/PreviewMode'
+import { RuntimeMode, runtimeModeStore } from '../preview/RuntimeMode'
+import { realAuthRepository } from '../repository/AuthRepository'
+import { appPreferences } from '../storage/AppPreferences'
+import { runtimeSettings } from '../storage/RuntimeSettings'
 import { secureStore } from '../storage/SecureStore'
+
+const DEMO_SESSION_KEY = 'demo_session_v1'
+
+export type SessionListener = (snapshot: SessionSnapshot) => void
 
 class SessionStore {
   private session: StoredSession | null = null
   private refreshTask: Promise<void> | null = null
+  private previewSession: PreviewSession = new PreviewSession()
+  private listeners: SessionListener[] = []
+  private demoSessionOperation: Promise<void> = Promise.resolve()
 
   async initialize(): Promise<void> {
+    this.previewSession.clear()
+    if (runtimeModeStore.isDemo()) {
+      await this.waitForDemoSessionOperation()
+      try {
+        const serializedDemo = await appPreferences.getString(DEMO_SESSION_KEY)
+        if (serializedDemo.length > 0) {
+          const demoSnapshot = JSON.parse(serializedDemo) as SessionSnapshot
+          if (!this.previewSession.restore(demoSnapshot)) {
+            await appPreferences.remove(DEMO_SESSION_KEY)
+          }
+        }
+      } catch (_) {
+        this.previewSession.clear()
+        await appPreferences.remove(DEMO_SESSION_KEY)
+      }
+      this.session = null
+      this.publish()
+      return
+    }
+    await this.loadRealSession()
+    this.publish()
+  }
+
+  private async loadRealSession(): Promise<void> {
     try {
       const serialized = await secureStore.readSession()
       if (serialized.length === 0) {
@@ -37,6 +72,9 @@ class SessionStore {
   }
 
   async restore(): Promise<'active' | 'anonymous' | 'step-up' | 'unavailable'> {
+    if (runtimeModeStore.isDemo()) {
+      return this.previewSession.isActive() ? 'active' : 'anonymous'
+    }
     if (this.session === null || this.session.refreshCookie.length === 0) {
       return 'anonymous'
     }
@@ -56,23 +94,66 @@ class SessionStore {
   }
 
   async login(request: LoginRequest): Promise<SessionSnapshot> {
-    const response = await authRepository.login(request)
+    const previewSnapshot = this.previewSession.tryLogin(request)
+    if (previewSnapshot !== null) {
+      this.refreshTask = null
+      runtimeModeStore.activateDemo()
+      await runtimeModeStore.persistCurrentMode()
+      await this.persistDemoSession(previewSnapshot)
+      this.publish()
+      return previewSnapshot
+    }
+    this.previewSession.clear()
+    runtimeModeStore.activateReal()
+    await runtimeModeStore.persistCurrentMode()
+    await runtimeSettings.activateReal()
+    const response = await realAuthRepository.login(request)
     return this.acceptLoginResponse(response)
   }
 
   async loginByCode(request: LoginByCodeRequest): Promise<SessionSnapshot> {
-    const response = await authRepository.loginByCode(request)
+    const previewSnapshot = this.previewSession.tryLoginByCode(request)
+    if (previewSnapshot !== null) {
+      this.refreshTask = null
+      runtimeModeStore.activateDemo()
+      await runtimeModeStore.persistCurrentMode()
+      await this.persistDemoSession(previewSnapshot)
+      this.publish()
+      return previewSnapshot
+    }
+    this.previewSession.clear()
+    runtimeModeStore.activateReal()
+    await runtimeModeStore.persistCurrentMode()
+    await runtimeSettings.activateReal()
+    const response = await realAuthRepository.loginByCode(request)
     return this.acceptLoginResponse(response)
   }
 
   async sendLoginCode(target: string): Promise<void> {
-    await authRepository.sendVerifyCode({
+    if (this.previewSession.canSendCode(target)) {
+      runtimeModeStore.activateDemo()
+      await runtimeModeStore.persistCurrentMode()
+      return
+    }
+    runtimeModeStore.activateReal()
+    await runtimeModeStore.persistCurrentMode()
+    await runtimeSettings.activateReal()
+    await realAuthRepository.sendVerifyCode({
       target: target,
       scene: 'login'
     })
   }
 
   async enterPlatformTenant(tenantId: string, reason: string): Promise<SessionSnapshot> {
+    if (runtimeModeStore.isDemo()) {
+      if (!this.previewSession.isActive()) {
+        throw new ApiError('请先登录', 401, 401, 'AUTHENTICATION_REQUIRED')
+      }
+      const snapshot = this.previewSession.enterTenant(tenantId)
+      await this.persistDemoSession(snapshot)
+      this.publish()
+      return snapshot
+    }
     return this.switchContext(
       `/auth/platform-context/tenants/${encodeURIComponent(tenantId)}`,
       JSON.stringify({ reason: reason.trim() }),
@@ -82,6 +163,15 @@ class SessionStore {
   }
 
   async returnPlatformContext(): Promise<SessionSnapshot> {
+    if (runtimeModeStore.isDemo()) {
+      if (!this.previewSession.isActive()) {
+        throw new ApiError('请先登录', 401, 401, 'AUTHENTICATION_REQUIRED')
+      }
+      const snapshot = this.previewSession.returnToPlatform()
+      await this.persistDemoSession(snapshot)
+      this.publish()
+      return snapshot
+    }
     return this.switchContext('/auth/platform-context', undefined, 'PLATFORM', '')
   }
 
@@ -120,6 +210,12 @@ class SessionStore {
   }
 
   async logout(): Promise<void> {
+    if (runtimeModeStore.isDemo()) {
+      this.previewSession.clear()
+      this.publish()
+      await this.removeDemoSession()
+      return
+    }
     const current = this.session
     let localClearError: Error | null = null
     try {
@@ -129,7 +225,7 @@ class SessionStore {
     }
     try {
       if (current !== null && current.refreshCookie.length > 0) {
-        await authRepository.logout(current.refreshCookie)
+        await realAuthRepository.logout(current.refreshCookie)
       }
     } catch (error) {
       if (error instanceof ApiError) {
@@ -156,6 +252,14 @@ class SessionStore {
     body?: string,
     customMethod?: string
   ): Promise<ApiSuccess<T>> {
+    if (runtimeModeStore.isDemo()) {
+      throw new ApiError(
+        '本地预览为只读模式，不会向服务端提交请求',
+        403,
+        403,
+        'PREVIEW_READ_ONLY'
+      )
+    }
     const current = this.requireSession()
     const failedToken = current.auth.token === null ? '' : current.auth.token
     try {
@@ -215,6 +319,11 @@ class SessionStore {
   }
 
   getSnapshot(): SessionSnapshot {
+    if (runtimeModeStore.isDemo()) {
+      return this.previewSession.isActive()
+        ? this.previewSession.getSnapshot()
+        : anonymousSnapshot()
+    }
     if (this.session === null) {
       return anonymousSnapshot()
     }
@@ -222,6 +331,9 @@ class SessionStore {
   }
 
   getAlertSocketCredentials(): AlertSocketCredentials | null {
+    if (runtimeModeStore.isDemo()) {
+      return null
+    }
     if (this.session === null || this.session.auth.token === null ||
       this.session.auth.token.length === 0) {
       return null
@@ -239,6 +351,67 @@ class SessionStore {
       accessToken: accessToken,
       tenantId: context.tenantId,
       contextType: context.contextType
+    }
+  }
+
+  isPreviewMode(): boolean {
+    return runtimeModeStore.isDemo()
+  }
+
+  getRuntimeMode(): RuntimeMode {
+    return runtimeModeStore.getMode()
+  }
+
+  addListener(listener: SessionListener): void {
+    if (this.listeners.indexOf(listener) >= 0) {
+      return
+    }
+    this.listeners.push(listener)
+  }
+
+  removeListener(listener: SessionListener): void {
+    const index = this.listeners.indexOf(listener)
+    if (index >= 0) {
+      this.listeners.splice(index, 1)
+    }
+  }
+
+  async activateRealMode(): Promise<SessionSnapshot> {
+    this.previewSession.clear()
+    runtimeModeStore.activateReal()
+    await runtimeModeStore.persistCurrentMode()
+    await runtimeSettings.activateReal()
+    await this.loadRealSession()
+    this.publish()
+    return this.getSnapshot()
+  }
+
+  async updateDemoNickname(nickname: string): Promise<void> {
+    if (!runtimeModeStore.isDemo() || !this.previewSession.isActive()) {
+      return
+    }
+    const snapshot = this.previewSession.updateNickname(nickname.trim())
+    await this.persistDemoSession(snapshot)
+    this.publish()
+  }
+
+  async resetDemoSession(): Promise<void> {
+    if (!runtimeModeStore.isDemo() || !this.previewSession.isActive()) {
+      return
+    }
+    const snapshot = this.previewSession.resetCurrent()
+    await this.persistDemoSession(snapshot)
+    this.publish()
+  }
+
+  async refreshOnForeground(): Promise<void> {
+    if (runtimeModeStore.isDemo() || this.session === null) {
+      return
+    }
+    try {
+      await this.refreshOnce()
+    } catch (_) {
+      // 401 会在 refresh 中清理会话；暂时性链路失败保留当前本地状态。
     }
   }
 
@@ -276,7 +449,7 @@ class SessionStore {
       throw new ApiError('登录状态已过期，请重新登录', 401, 401, 'SESSION_EXPIRED')
     }
     try {
-      const response = await authRepository.refresh(current.refreshCookie)
+      const response = await realAuthRepository.refresh(current.refreshCookie)
       if (this.session !== current) {
         throw new ApiError('登录状态已经变更', 409, 409, 'SESSION_CHANGED')
       }
@@ -317,6 +490,7 @@ class SessionStore {
     }
     await secureStore.writeSession(JSON.stringify(next))
     this.session = next
+    this.publish()
   }
 
   private async replaceRefreshedSession(
@@ -339,6 +513,7 @@ class SessionStore {
       throw new ApiError('登录状态已经变更', 409, 409, 'SESSION_CHANGED')
     }
     this.session = next
+    this.publish()
   }
 
   private async replaceContextSession(expected: StoredSession, auth: AuthResult): Promise<void> {
@@ -357,11 +532,13 @@ class SessionStore {
       throw new ApiError('登录状态已经变更', 409, 409, 'SESSION_CHANGED')
     }
     this.session = next
+    this.publish()
   }
 
   private async clear(): Promise<void> {
     this.session = null
     await secureStore.clearSession()
+    this.publish()
   }
 
   private async clearIfCurrent(expected: StoredSession | null): Promise<void> {
@@ -369,6 +546,45 @@ class SessionStore {
       return
     }
     await this.clear()
+  }
+
+  private async persistDemoSession(snapshot: SessionSnapshot): Promise<void> {
+    const serialized = JSON.stringify(snapshot)
+    await this.enqueueDemoSessionOperation(async (): Promise<void> => {
+      await appPreferences.putString(DEMO_SESSION_KEY, serialized)
+    })
+  }
+
+  private async removeDemoSession(): Promise<void> {
+    await this.enqueueDemoSessionOperation(async (): Promise<void> => {
+      await appPreferences.remove(DEMO_SESSION_KEY)
+    })
+  }
+
+  private async waitForDemoSessionOperation(): Promise<void> {
+    try {
+      await this.demoSessionOperation
+    } catch (_) {
+    }
+  }
+
+  private async enqueueDemoSessionOperation(operation: () => Promise<void>): Promise<void> {
+    const previous = this.demoSessionOperation
+    this.demoSessionOperation = (async (): Promise<void> => {
+      try {
+        await previous
+      } catch (_) {
+      }
+      await operation()
+    })()
+    await this.demoSessionOperation
+  }
+
+  private publish(): void {
+    const snapshot = this.getSnapshot()
+    for (const listener of this.listeners) {
+      listener(snapshot)
+    }
   }
 }
 

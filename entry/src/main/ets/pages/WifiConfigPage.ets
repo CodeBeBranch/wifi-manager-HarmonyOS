@@ -1,5 +1,6 @@
 import router from '@ohos.router'
 import { ApiError } from '../model/ApiModels'
+import { resetToLogin, resetToMain } from '../navigation/AppRouter'
 import { DeviceNode } from '../model/DeviceModels'
 import {
   WifiConfigPollState,
@@ -9,8 +10,7 @@ import {
   wifiConfigStatusLabel
 } from '../model/WifiConfigModels'
 import { wifiConfigPoller } from '../network/WifiConfigPoller'
-import { deviceRepository } from '../repository/DeviceRepository'
-import { wifiConfigRepository } from '../repository/WifiConfigRepository'
+import { repositoryFactory } from '../repository/RepositoryFactory'
 import { sessionStore } from '../session/SessionStore'
 import { AppTheme } from '../ui/AppTheme'
 
@@ -45,7 +45,7 @@ struct WifiConfigPage {
     const admin = snapshot.role === 0 || snapshot.role === 1
     if (!snapshot.authenticated || !admin ||
       (contextType !== 'TENANT' && contextType !== 'PLATFORM_TENANT')) {
-      router.replaceUrl({ url: 'pages/WorkspacePage' })
+      resetToMain()
       return
     }
 
@@ -90,7 +90,7 @@ struct WifiConfigPage {
     this.pollState = 'idle'
     this.pollAttempt = 0
     try {
-      const device = await deviceRepository.detail(this.nodeId)
+      const device = await repositoryFactory.device().detail(this.nodeId)
       if (pageVersion !== this.pageVersion ||
         requestVersion !== this.loadRequestVersion) return
       if (!Number.isInteger(device.nodeId) || String(device.nodeId) !== this.nodeId ||
@@ -101,7 +101,7 @@ struct WifiConfigPage {
       }
       this.device = device
 
-      const latest = await wifiConfigRepository.latest(device.deviceCode)
+      const latest = await repositoryFactory.wifiConfig().latest(device.deviceCode)
       if (pageVersion !== this.pageVersion ||
         requestVersion !== this.loadRequestVersion ||
         this.device?.deviceCode !== device.deviceCode) return
@@ -113,7 +113,7 @@ struct WifiConfigPage {
       }
     } catch (error) {
       if (error instanceof ApiError && error.httpStatus === 401) {
-        router.replaceUrl({ url: 'pages/LoginPage' })
+        resetToLogin()
         return
       }
       if (pageVersion !== this.pageVersion ||
@@ -170,7 +170,7 @@ struct WifiConfigPage {
     this.errorMessage = ''
     this.successMessage = ''
     try {
-      const request = wifiConfigRepository.stage(deviceCode, ssid, password)
+      const request = repositoryFactory.wifiConfig().stage(deviceCode, ssid, password)
       this.clearCredentials()
       const task = await request
       if (pageVersion !== this.pageVersion ||
@@ -190,7 +190,7 @@ struct WifiConfigPage {
     } catch (error) {
       this.clearCredentials()
       if (error instanceof ApiError && error.httpStatus === 401) {
-        router.replaceUrl({ url: 'pages/LoginPage' })
+        resetToLogin()
         return
       }
       if (pageVersion !== this.pageVersion ||
@@ -224,7 +224,7 @@ struct WifiConfigPage {
         }
         if (error !== null) {
           if (error.httpStatus === 401) {
-            router.replaceUrl({ url: 'pages/LoginPage' })
+            resetToLogin()
             return
           }
           this.errorMessage = error.message

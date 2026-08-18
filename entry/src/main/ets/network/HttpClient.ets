@@ -8,7 +8,9 @@ import {
   PublicRequestHeaders
 } from '../model/ApiModels'
 import { runtimeSettings } from '../storage/RuntimeSettings'
+import { runtimeModeStore } from '../preview/RuntimeMode'
 import { extractRefreshCookie, parseApiResponse } from './ApiParser'
+import { networkTransportFactory } from './TransportFactory'
 
 export interface ApiRequest {
   method: http.RequestMethod
@@ -20,6 +22,14 @@ export interface ApiRequest {
 }
 
 class HttpClient {
+  private activeClients: http.HttpRequest[] = []
+
+  constructor() {
+    runtimeModeStore.addListener((): void => {
+      this.cancelAll()
+    })
+  }
+
   private buildHeaders(request: ApiRequest): Object {
     const clientInstanceId = runtimeSettings.getClientInstanceId()
     const requestId = util.generateRandomUUID()
@@ -53,7 +63,9 @@ class HttpClient {
   }
 
   async request<T>(request: ApiRequest): Promise<ApiSuccess<T>> {
-    const client = http.createHttp()
+    runtimeModeStore.guardNetwork('HTTP')
+    const client = networkTransportFactory.createHttp()
+    this.activeClients.push(client)
     const headers = this.buildHeaders(request)
 
     try {
@@ -85,7 +97,26 @@ class HttpClient {
       }
       throw new ApiError('无法连接服务，请检查网络后重试', 0, 0, '', '', '', true)
     } finally {
+      this.removeClient(client)
       client.destroy()
+    }
+  }
+
+  cancelAll(): void {
+    const clients = this.activeClients.slice()
+    this.activeClients = []
+    for (const client of clients) {
+      try {
+        client.destroy()
+      } catch (_) {
+      }
+    }
+  }
+
+  private removeClient(client: http.HttpRequest): void {
+    const index = this.activeClients.indexOf(client)
+    if (index >= 0) {
+      this.activeClients.splice(index, 1)
     }
   }
 }

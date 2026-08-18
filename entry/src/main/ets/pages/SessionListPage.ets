@@ -1,10 +1,11 @@
 import router from '@ohos.router'
 import { ApiError } from '../model/ApiModels'
+import { resetToLogin, resetToMain } from '../navigation/AppRouter'
 import {
   NetworkSession,
   SessionQuery
 } from '../model/SessionModels'
-import { sessionRepository } from '../repository/SessionRepository'
+import { repositoryFactory } from '../repository/RepositoryFactory'
 import { sessionStore } from '../session/SessionStore'
 import { AppTheme } from '../ui/AppTheme'
 
@@ -12,9 +13,9 @@ interface SessionDetailParams {
   session: string
 }
 
-@Entry
 @Component
-struct SessionListPage {
+export struct SessionListContent {
+  @Prop embedded: boolean = false
   @State sessions: NetworkSession[] = []
   @State mac: string = ''
   @State nodeId: string = ''
@@ -36,7 +37,7 @@ struct SessionListPage {
     const snapshot = sessionStore.getSnapshot()
     const contextType = snapshot.context?.contextType ?? ''
     if (!snapshot.authenticated || (contextType !== 'TENANT' && contextType !== 'PLATFORM_TENANT')) {
-      router.replaceUrl({ url: 'pages/WorkspacePage' })
+      resetToMain()
       return
     }
     this.admin = snapshot.role === 0 || snapshot.role === 1
@@ -56,7 +57,7 @@ struct SessionListPage {
       status: this.appliedStatus
     }
     try {
-      const result = await sessionRepository.list(query, this.admin)
+      const result = await repositoryFactory.session().list(query, this.admin)
       if (requestVersion !== this.requestVersion) return
       this.sessions = result.records ?? []
       this.current = Number(result.current)
@@ -64,7 +65,7 @@ struct SessionListPage {
       this.total = Number(result.total)
     } catch (error) {
       if (error instanceof ApiError && error.httpStatus === 401) {
-        router.replaceUrl({ url: 'pages/LoginPage' })
+        resetToLogin()
         return
       }
       if (requestVersion !== this.requestVersion) return
@@ -145,17 +146,21 @@ struct SessionListPage {
   build() {
     Column() {
       Row({ space: 12 }) {
-        Button('‹')
-          .width(44)
-          .height(44)
-          .fontSize(24)
-          .fontColor(AppTheme.textSoft)
-          .backgroundColor(AppTheme.surfaceRaised)
-          .border({ width: 1, color: AppTheme.border })
-          .borderRadius(8)
-          .onClick(() => router.back())
+        if (!this.embedded) {
+          Button('‹')
+            .width(44)
+            .height(44)
+            .fontSize(24)
+            .fontColor(AppTheme.textSoft)
+            .backgroundColor(AppTheme.surfaceRaised)
+            .border({ width: 1, color: AppTheme.border })
+            .borderRadius(8)
+            .onClick(() => router.back())
+        }
         Column({ space: 2 }) {
-          Text('网络工作区').fontSize(11).fontColor(AppTheme.primary)
+          Text(this.embedded && !this.admin ? '我的网络' : '网络工作区')
+            .fontSize(11)
+            .fontColor(AppTheme.primary)
           Text('连接记录').fontSize(23).fontWeight(FontWeight.Bold).fontColor(AppTheme.text)
         }
         .alignItems(HorizontalAlign.Start)
@@ -357,7 +362,7 @@ struct SessionListPage {
     }
     .width('100%')
     .height('100%')
-    .padding({ left: 16, right: 16, top: 20, bottom: 16 })
+    .padding({ left: 16, right: 16, top: this.embedded ? 14 : 20, bottom: 16 })
     .backgroundColor(AppTheme.background)
   }
 
@@ -372,5 +377,17 @@ struct SessionListPage {
       .backgroundColor(this.status === status ? AppTheme.primaryStrong : Color.Transparent)
       .borderRadius(6)
       .onClick(() => this.changeStatus(status))
+  }
+}
+
+@Entry
+@Component
+struct SessionListPage {
+  build() {
+    Column() {
+      SessionListContent({ embedded: false })
+    }
+    .width('100%')
+    .height('100%')
   }
 }

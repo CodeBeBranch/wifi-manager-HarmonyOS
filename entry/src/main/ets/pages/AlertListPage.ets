@@ -6,8 +6,9 @@ import {
   AlertSocketState
 } from '../model/AlertModels'
 import { ApiError } from '../model/ApiModels'
+import { resetToLogin, resetToMain } from '../navigation/AppRouter'
 import { alertSocketClient } from '../network/AlertSocketClient'
-import { alertRepository } from '../repository/AlertRepository'
+import { repositoryFactory } from '../repository/RepositoryFactory'
 import { sessionStore } from '../session/SessionStore'
 import { AppTheme } from '../ui/AppTheme'
 
@@ -15,9 +16,9 @@ interface AlertDetailParams {
   id: string
 }
 
-@Entry
 @Component
-struct AlertListPage {
+export struct AlertListContent {
+  @Prop embedded: boolean = false
   @State alerts: AlertEvent[] = []
   @State level: string = ''
   @State status: string = ''
@@ -41,19 +42,21 @@ struct AlertListPage {
     const admin = snapshot.role === 0 || snapshot.role === 1
     if (!snapshot.authenticated || !admin ||
       (contextType !== 'TENANT' && contextType !== 'PLATFORM_TENANT')) {
-      router.replaceUrl({ url: 'pages/WorkspacePage' })
+      resetToMain()
       return
     }
     this.load(1)
-    alertSocketClient.start(
-      (state: AlertSocketState, attempt: number): void => {
-        this.socketState = state
-        this.socketAttempt = attempt
-      },
-      (alert: AlertPushEvent): void => {
-        this.liveAlertMessage = alert.title || alert.ruleCode || `收到告警 ${alert.alertId}`
-      }
-    )
+    if (!sessionStore.isPreviewMode()) {
+      alertSocketClient.start(
+        (state: AlertSocketState, attempt: number): void => {
+          this.socketState = state
+          this.socketAttempt = attempt
+        },
+        (alert: AlertPushEvent): void => {
+          this.liveAlertMessage = alert.title || alert.ruleCode || `收到告警 ${alert.alertId}`
+        }
+      )
+    }
   }
 
   aboutToDisappear(): void {
@@ -72,7 +75,7 @@ struct AlertListPage {
       mac: this.appliedMac
     }
     try {
-      const result = await alertRepository.list(query)
+      const result = await repositoryFactory.alert().list(query)
       if (requestVersion !== this.requestVersion) return
       this.alerts = result.records ?? []
       this.current = Number(result.current)
@@ -80,7 +83,7 @@ struct AlertListPage {
       this.total = Number(result.total)
     } catch (error) {
       if (error instanceof ApiError && error.httpStatus === 401) {
-        router.replaceUrl({ url: 'pages/LoginPage' })
+        resetToLogin()
         return
       }
       if (requestVersion !== this.requestVersion) return
@@ -159,17 +162,19 @@ struct AlertListPage {
   build() {
     Column() {
       Row({ space: 12 }) {
-        Button('‹')
-          .width(44)
-          .height(44)
-          .fontSize(24)
-          .fontColor(AppTheme.textSoft)
-          .backgroundColor(AppTheme.surfaceRaised)
-          .border({ width: 1, color: AppTheme.border })
-          .borderRadius(8)
-          .onClick(() => router.back())
+        if (!this.embedded) {
+          Button('‹')
+            .width(44)
+            .height(44)
+            .fontSize(24)
+            .fontColor(AppTheme.textSoft)
+            .backgroundColor(AppTheme.surfaceRaised)
+            .border({ width: 1, color: AppTheme.border })
+            .borderRadius(8)
+            .onClick(() => router.back())
+        }
         Column({ space: 2 }) {
-          Text('安全工作区').fontSize(11).fontColor(AppTheme.primary)
+          Text(this.embedded ? '安全中心' : '安全工作区').fontSize(11).fontColor(AppTheme.primary)
           Text('告警').fontSize(23).fontWeight(FontWeight.Bold).fontColor(AppTheme.text)
         }
         .alignItems(HorizontalAlign.Start)
@@ -400,7 +405,7 @@ struct AlertListPage {
     }
     .width('100%')
     .height('100%')
-    .padding({ left: 16, right: 16, top: 20, bottom: 16 })
+    .padding({ left: 16, right: 16, top: this.embedded ? 14 : 20, bottom: 12 })
     .backgroundColor(AppTheme.background)
   }
 
@@ -428,5 +433,17 @@ struct AlertListPage {
       .backgroundColor(this.level === level ? AppTheme.surface : Color.Transparent)
       .borderRadius(6)
       .onClick(() => this.changeLevel(level))
+  }
+}
+
+@Entry
+@Component
+struct AlertListPage {
+  build() {
+    Column() {
+      AlertListContent({ embedded: false })
+    }
+    .width('100%')
+    .height('100%')
   }
 }

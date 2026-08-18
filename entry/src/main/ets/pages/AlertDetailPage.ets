@@ -1,7 +1,8 @@
 import router from '@ohos.router'
 import { AlertEvent } from '../model/AlertModels'
 import { ApiError } from '../model/ApiModels'
-import { alertRepository } from '../repository/AlertRepository'
+import { resetToLogin, resetToMain } from '../navigation/AppRouter'
+import { repositoryFactory } from '../repository/RepositoryFactory'
 import { sessionStore } from '../session/SessionStore'
 import { AppTheme } from '../ui/AppTheme'
 
@@ -14,6 +15,7 @@ interface AlertDetailParams {
 struct AlertDetailPage {
   @State alertId: number = 0
   @State alert: AlertEvent | null = null
+  @State writable: boolean = false
   @State loading: boolean = true
   @State handling: boolean = false
   @State confirming: boolean = false
@@ -27,9 +29,10 @@ struct AlertDetailPage {
     const admin = snapshot.role === 0 || snapshot.role === 1
     if (!snapshot.authenticated || !admin ||
       (contextType !== 'TENANT' && contextType !== 'PLATFORM_TENANT')) {
-      router.replaceUrl({ url: 'pages/WorkspacePage' })
+      resetToMain()
       return
     }
+    this.writable = snapshot.context?.writable ?? false
     const params = router.getParams() as AlertDetailParams | null
     const id = Number(params?.id ?? '0')
     if (!Number.isInteger(id) || id <= 0) {
@@ -46,7 +49,7 @@ struct AlertDetailPage {
     this.loading = true
     this.errorMessage = ''
     try {
-      const detail = await alertRepository.detail(this.alertId)
+      const detail = await repositoryFactory.alert().detail(this.alertId)
       if (requestVersion !== this.requestVersion) return
       if (Number(detail.id) !== this.alertId) {
         throw new ApiError('告警详情响应无效', 502, 502, 'DEPENDENCY_PROTOCOL_INVALID')
@@ -54,7 +57,7 @@ struct AlertDetailPage {
       this.alert = detail
     } catch (error) {
       if (error instanceof ApiError && error.httpStatus === 401) {
-        router.replaceUrl({ url: 'pages/LoginPage' })
+        resetToLogin()
         return
       }
       if (requestVersion !== this.requestVersion) return
@@ -67,18 +70,18 @@ struct AlertDetailPage {
   }
 
   private async handleAlert(): Promise<void> {
-    if (this.alert === null || this.alert.status === 1 || this.handling) return
+    if (!this.writable || this.alert === null || this.alert.status === 1 || this.handling) return
     this.handling = true
     this.errorMessage = ''
     this.successMessage = ''
     try {
-      await alertRepository.handle(this.alertId)
+      await repositoryFactory.alert().handle(this.alertId)
       await this.load()
       this.confirming = false
       this.successMessage = '告警已标记为已处理'
     } catch (error) {
       if (error instanceof ApiError && error.httpStatus === 401) {
-        router.replaceUrl({ url: 'pages/LoginPage' })
+        resetToLogin()
         return
       }
       this.errorMessage = error instanceof ApiError ? error.message : '告警处理失败，请稍后重试'
@@ -236,7 +239,17 @@ struct AlertDetailPage {
                 .borderRadius(8)
             }
 
-            if (this.alert.status !== 1 && !this.confirming) {
+            if (this.alert.status !== 1 && !this.writable) {
+              Text('当前工作区为只读状态，告警操作不可用')
+                .fontSize(13)
+                .fontColor(AppTheme.warningText)
+                .width('100%')
+                .padding(12)
+                .backgroundColor(AppTheme.warningSurface)
+                .borderRadius(8)
+            }
+
+            if (this.alert.status !== 1 && this.writable && !this.confirming) {
               Button('标记为已处理')
                 .width('100%')
                 .height(48)
@@ -247,7 +260,7 @@ struct AlertDetailPage {
                 .onClick(() => this.confirming = true)
             }
 
-            if (this.alert.status !== 1 && this.confirming) {
+            if (this.alert.status !== 1 && this.writable && this.confirming) {
               Column({ space: 12 }) {
                 Text(`确定将告警 ${this.alert.id} 标记为已处理吗？`)
                   .fontSize(14)

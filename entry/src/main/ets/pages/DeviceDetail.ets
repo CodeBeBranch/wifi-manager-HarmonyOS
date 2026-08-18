@@ -1,7 +1,8 @@
 import router from '@ohos.router'
 import { ApiError } from '../model/ApiModels'
+import { resetToLogin } from '../navigation/AppRouter'
 import { DeviceNode } from '../model/DeviceModels'
-import { deviceRepository } from '../repository/DeviceRepository'
+import { repositoryFactory } from '../repository/RepositoryFactory'
 import { AppTheme } from '../ui/AppTheme'
 
 interface DeviceDetailParams {
@@ -42,12 +43,12 @@ struct DeviceDetailPage {
     this.loading = true
     this.errorMessage = ''
     try {
-      const device = await deviceRepository.detail(this.nodeId)
+      const device = await repositoryFactory.device().detail(this.nodeId)
       if (requestVersion !== this.requestVersion) return
       this.device = device
     } catch (error) {
       if (error instanceof ApiError && error.httpStatus === 401) {
-        router.replaceUrl({ url: 'pages/LoginPage' })
+        resetToLogin()
         return
       }
       if (requestVersion !== this.requestVersion) return

@@ -1,6 +1,7 @@
 import router from '@ohos.router'
 import util from '@ohos.util'
 import { ApiError } from '../model/ApiModels'
+import { resetToLogin, resetToMain } from '../navigation/AppRouter'
 import {
   DeviceCommandMode,
   DeviceCommandPollState,
@@ -12,7 +13,7 @@ import {
   isValidMacAddress
 } from '../model/DeviceCommandModels'
 import { deviceCommandPoller } from '../network/DeviceCommandPoller'
-import { deviceCommandRepository } from '../repository/DeviceCommandRepository'
+import { repositoryFactory } from '../repository/RepositoryFactory'
 import { sessionStore } from '../session/SessionStore'
 import { AppTheme } from '../ui/AppTheme'
 
@@ -54,7 +55,7 @@ struct DeviceCommandPage {
     const admin = snapshot.role === 0 || snapshot.role === 1
     if (!snapshot.authenticated || !admin ||
       (contextType !== 'TENANT' && contextType !== 'PLATFORM_TENANT')) {
-      router.replaceUrl({ url: 'pages/WorkspacePage' })
+      resetToMain()
       return
     }
 
@@ -85,7 +86,7 @@ struct DeviceCommandPage {
     this.historyLoading = true
     this.historyErrorMessage = ''
     try {
-      const result = await deviceCommandRepository.list({
+      const result = await repositoryFactory.deviceCommand().list({
         current: 1,
         size: 20,
         requestId: '',
@@ -102,7 +103,7 @@ struct DeviceCommandPage {
       }
     } catch (error) {
       if (error instanceof ApiError && error.httpStatus === 401) {
-        router.replaceUrl({ url: 'pages/LoginPage' })
+        resetToLogin()
         return
       }
       if (pageVersion !== this.pageVersion ||
@@ -168,10 +169,10 @@ struct DeviceCommandPage {
     this.errorMessage = ''
     try {
       const result = mode === 'restart'
-        ? await deviceCommandRepository.restart(deviceCode, this.reason)
+        ? await repositoryFactory.deviceCommand().restart(deviceCode, this.reason)
         : mode === 'disconnect'
-          ? await deviceCommandRepository.disconnectMac(deviceCode, this.mac)
-          : await deviceCommandRepository.blockTraffic(deviceCode, this.dstIp, this.sni)
+          ? await repositoryFactory.deviceCommand().disconnectMac(deviceCode, this.mac)
+          : await repositoryFactory.deviceCommand().blockTraffic(deviceCode, this.dstIp, this.sni)
       if (pageVersion !== this.pageVersion ||
         requestVersion !== this.submitRequestVersion ||
         deviceCode !== this.deviceCode) return
@@ -187,7 +188,7 @@ struct DeviceCommandPage {
       this.loadHistory()
     } catch (error) {
       if (error instanceof ApiError && error.httpStatus === 401) {
-        router.replaceUrl({ url: 'pages/LoginPage' })
+        resetToLogin()
         return
       }
       if (pageVersion !== this.pageVersion ||
@@ -220,7 +221,7 @@ struct DeviceCommandPage {
         }
         if (error !== null) {
           if (error.httpStatus === 401) {
-            router.replaceUrl({ url: 'pages/LoginPage' })
+            resetToLogin()
             return
           }
           this.errorMessage = error.message

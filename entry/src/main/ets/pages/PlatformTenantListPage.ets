@@ -1,13 +1,14 @@
 import router from '@ohos.router'
 import { ApiError } from '../model/ApiModels'
+import { resetToLogin, resetToMain } from '../navigation/AppRouter'
 import { PlatformTenant } from '../model/TenantModels'
-import { tenantRepository } from '../repository/TenantRepository'
+import { repositoryFactory } from '../repository/RepositoryFactory'
 import { sessionStore } from '../session/SessionStore'
 import { AppTheme } from '../ui/AppTheme'
 
-@Entry
 @Component
-struct PlatformTenantListPage {
+export struct PlatformTenantListContent {
+  @Prop embedded: boolean = false
   @State tenants: PlatformTenant[] = []
   @State keyword: string = ''
   @State appliedKeyword: string = ''
@@ -24,7 +25,7 @@ struct PlatformTenantListPage {
     const snapshot = sessionStore.getSnapshot()
     if (!snapshot.authenticated || snapshot.role !== 0 ||
       snapshot.context?.contextType !== 'PLATFORM') {
-      router.replaceUrl({ url: 'pages/WorkspacePage' })
+      resetToMain()
       return
     }
     this.loadTenants(true)
@@ -36,7 +37,7 @@ struct PlatformTenantListPage {
     this.loading = true
     this.errorMessage = ''
     try {
-      const result = await tenantRepository.listPlatformTenants(
+      const result = await repositoryFactory.tenant().listPlatformTenants(
         page,
         this.pageSize,
         this.appliedKeyword
@@ -51,7 +52,7 @@ struct PlatformTenantListPage {
       }
     } catch (error) {
       if (error instanceof ApiError && error.httpStatus === 401) {
-        router.replaceUrl({ url: 'pages/LoginPage' })
+        resetToLogin()
         return
       }
       this.errorMessage = error instanceof ApiError ? error.message : '组织列表加载失败，请稍后重试'
@@ -97,7 +98,7 @@ struct PlatformTenantListPage {
     this.errorMessage = ''
     try {
       await sessionStore.enterPlatformTenant(tenant.tenantId, reason)
-      router.replaceUrl({ url: 'pages/WorkspacePage' })
+      resetToMain()
     } catch (error) {
       this.errorMessage = error instanceof ApiError ? error.message : '工作区切换失败，请稍后重试'
     } finally {
@@ -113,14 +114,16 @@ struct PlatformTenantListPage {
     Scroll() {
       Column() {
         Row({ space: 12 }) {
-          Button('返回')
-            .height(44)
-            .fontSize(13)
-            .fontColor(AppTheme.textSoft)
-            .backgroundColor(AppTheme.surface)
-            .border({ width: 1, color: AppTheme.borderStrong })
-            .borderRadius(6)
-            .onClick(() => router.back())
+          if (!this.embedded) {
+            Button('返回')
+              .height(44)
+              .fontSize(13)
+              .fontColor(AppTheme.textSoft)
+              .backgroundColor(AppTheme.surface)
+              .border({ width: 1, color: AppTheme.borderStrong })
+              .borderRadius(6)
+              .onClick(() => router.back())
+          }
           Column({ space: 3 }) {
             Text('系统管理')
               .fontSize(11)
@@ -287,10 +290,22 @@ struct PlatformTenantListPage {
         }
       }
       .width('100%')
-      .padding({ left: 20, right: 20, top: 26, bottom: 36 })
+      .padding({ left: 16, right: 16, top: this.embedded ? 14 : 26, bottom: 36 })
     }
     .width('100%')
     .height('100%')
     .backgroundColor(AppTheme.background)
+  }
+}
+
+@Entry
+@Component
+struct PlatformTenantListPage {
+  build() {
+    Column() {
+      PlatformTenantListContent({ embedded: false })
+    }
+    .width('100%')
+    .height('100%')
   }
 }

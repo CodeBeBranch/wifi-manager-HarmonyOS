@@ -1,4 +1,5 @@
 import router from '@ohos.router'
+import { resetToMain } from '../navigation/AppRouter'
 import { ApiError } from '../model/ApiModels'
 import {
   isValidContact,
@@ -12,6 +13,11 @@ import {
   loginPreferenceStore,
   LoginPreferenceSnapshot
 } from '../storage/LoginPreferenceStore'
+import {
+  isPreviewAvailable,
+  PreviewAccount,
+  previewAccounts
+} from '../preview/PreviewMode'
 import { AppTheme } from '../ui/AppTheme'
 import { ThemeSelector } from '../ui/ThemeSelector'
 
@@ -44,6 +50,13 @@ struct LoginPage {
   }
 
   private async loadLoginPreference(): Promise<void> {
+    if (sessionStore.isPreviewMode()) {
+      this.rememberAccount = false
+      this.account = ''
+      this.rememberedUsername = ''
+      this.rememberedContact = ''
+      return
+    }
     try {
       const preference = await loginPreferenceStore.load()
       this.applyLoginPreference(preference)
@@ -94,6 +107,17 @@ struct LoginPage {
     this.errorMessage = ''
     this.successMessage = ''
     this.accountStateMessage = ''
+  }
+
+  private fillPreviewAccount(account: string): void {
+    if (this.loading || !isPreviewAvailable()) {
+      return
+    }
+    this.loginType = 'username'
+    this.account = account
+    this.password = '123456'
+    this.showPassword = false
+    this.clearMessages()
   }
 
   private isCodeLogin(): boolean {
@@ -157,11 +181,13 @@ struct LoginPage {
         this.showRestrictedAccount(snapshot)
         return
       }
-      try {
-        await loginPreferenceStore.save(this.loginType, account, this.rememberAccount)
-      } catch (_) {
+      if (!sessionStore.isPreviewMode()) {
+        try {
+          await loginPreferenceStore.save(this.loginType, account, this.rememberAccount)
+        } catch (_) {
+        }
       }
-      router.replaceUrl({ url: 'pages/WorkspacePage' })
+      resetToMain()
     } catch (error) {
       this.errorMessage = error instanceof ApiError ? error.message : '登录失败，请稍后重试'
     } finally {
@@ -245,7 +271,57 @@ struct LoginPage {
           .fontSize(15)
           .fontColor(AppTheme.muted)
           .width('100%')
-          .margin({ top: 8, bottom: 30 })
+          .margin({ top: 8, bottom: isPreviewAvailable() ? 14 : 30 })
+
+        if (isPreviewAvailable()) {
+          Column() {
+            Row() {
+              Text('本地演示')
+                .fontSize(12)
+                .fontWeight(FontWeight.Medium)
+                .fontColor(AppTheme.primary)
+                .layoutWeight(1)
+              Text('密码 123456')
+                .fontSize(12)
+                .fontColor(AppTheme.muted)
+            }
+            .width('100%')
+            .height(34)
+            ForEach(previewAccounts(), (item: PreviewAccount, index: number) => {
+              Row() {
+                Column({ space: 2 }) {
+                  Text(item.label)
+                    .fontSize(13)
+                    .fontWeight(FontWeight.Medium)
+                    .fontColor(AppTheme.text)
+                  Text(item.account)
+                    .fontSize(12)
+                    .fontColor(AppTheme.muted)
+                }
+                .alignItems(HorizontalAlign.Start)
+                .layoutWeight(1)
+                Button('使用')
+                  .height(36)
+                  .fontSize(13)
+                  .fontColor(AppTheme.primary)
+                  .backgroundColor(Color.Transparent)
+                  .onClick(() => this.fillPreviewAccount(item.account))
+              }
+              .width('100%')
+              .height(48)
+              .border({
+                width: { bottom: index < previewAccounts().length - 1 ? 1 : 0 },
+                color: AppTheme.border
+              })
+            }, (item: PreviewAccount) => item.account)
+          }
+          .width('100%')
+          .padding({ left: 14, right: 10, top: 8, bottom: 8 })
+          .backgroundColor(AppTheme.surfaceMuted)
+          .border({ width: 1, color: AppTheme.primary })
+          .borderRadius(8)
+          .margin({ bottom: 20 })
+        }
 
         Row({ space: 4 }) {
           Button('用户名')
@@ -449,6 +525,14 @@ struct LoginPage {
           .borderRadius(8)
           .margin({ top: 20 })
           .onClick(() => this.submit())
+
+        Button('验证码登录')
+          .width('100%')
+          .height(46)
+          .fontSize(14)
+          .fontColor(AppTheme.primary)
+          .backgroundColor(Color.Transparent)
+          .onClick(() => router.pushUrl({ url: 'pages/CodeLoginPage' }))
 
         Row({ space: 8 }) {
           Button('忘记密码')
