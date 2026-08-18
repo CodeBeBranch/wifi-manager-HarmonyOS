@@ -1,0 +1,15 @@
+{
+    "src":  [
+                "pages/Index",
+                "pages/LoginPage",
+                "pages/WorkspacePage",
+                "pages/PlatformTenantListPage",
+                "pages/DeviceListPage",
+                "pages/DeviceDetail",
+                "pages/DeviceCommandPage",
+                "pages/SessionListPage",
+                "pages/SessionDetailPage",
+                "pages/AlertListPage",
+                "pages/AlertDetailPage"
+            ]
+}

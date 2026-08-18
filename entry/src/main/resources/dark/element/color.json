@@ -1,0 +1,104 @@
+{
+  "color": [
+    {
+      "name": "start_window_background",
+      "value": "#0F1415"
+    },
+    {
+      "name": "app_background",
+      "value": "#0F1415"
+    },
+    {
+      "name": "app_background_soft",
+      "value": "#151B1D"
+    },
+    {
+      "name": "app_surface",
+      "value": "#1A2123"
+    },
+    {
+      "name": "app_surface_raised",
+      "value": "#20282B"
+    },
+    {
+      "name": "app_surface_muted",
+      "value": "#293336"
+    },
+    {
+      "name": "app_border",
+      "value": "#344044"
+    },
+    {
+      "name": "app_border_strong",
+      "value": "#4A595D"
+    },
+    {
+      "name": "app_text",
+      "value": "#F1F5F4"
+    },
+    {
+      "name": "app_text_soft",
+      "value": "#CBD5D2"
+    },
+    {
+      "name": "app_muted",
+      "value": "#9AA9A5"
+    },
+    {
+      "name": "app_primary",
+      "value": "#2FB3A1"
+    },
+    {
+      "name": "app_primary_strong",
+      "value": "#167F73"
+    },
+    {
+      "name": "app_primary_text",
+      "value": "#FFFFFF"
+    },
+    {
+      "name": "app_success",
+      "value": "#4ADE80"
+    },
+    {
+      "name": "app_success_text",
+      "value": "#BBF7D0"
+    },
+    {
+      "name": "app_success_surface",
+      "value": "#173F27"
+    },
+    {
+      "name": "app_warning",
+      "value": "#FBBF24"
+    },
+    {
+      "name": "app_warning_text",
+      "value": "#FDE68A"
+    },
+    {
+      "name": "app_warning_surface",
+      "value": "#493515"
+    },
+    {
+      "name": "app_danger",
+      "value": "#F87171"
+    },
+    {
+      "name": "app_danger_text",
+      "value": "#FECACA"
+    },
+    {
+      "name": "app_danger_surface",
+      "value": "#4B2020"
+    },
+    {
+      "name": "app_info",
+      "value": "#60A5FA"
+    },
+    {
+      "name": "app_info_text",
+      "value": "#BFDBFE"
+    }
+  ]
+}
