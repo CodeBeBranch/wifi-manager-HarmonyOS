@@ -106,6 +106,15 @@ export function mainRootRouteId(snapshot: SessionSnapshot, index: number): MainR
   return tabs[normalizedIndex].routeId
 }
 
+export function mainTabIndexForRoute(
+  snapshot: SessionSnapshot,
+  routeId: MainRootRouteId
+): number {
+  const tabs = mainTabs(snapshot)
+  const index = tabs.findIndex((tab: MainTab): boolean => tab.routeId === routeId)
+  return index < 0 ? 0 : index
+}
+
 export function mainTabRenderKey(snapshot: SessionSnapshot, tab: MainTab): string {
   const contextType = snapshot.context?.contextType ?? 'NONE'
   return `${snapshot.role}:${contextType}:${tab.routeId}`

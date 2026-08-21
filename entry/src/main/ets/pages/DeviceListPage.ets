@@ -4,6 +4,7 @@ import { resetToLogin } from '../navigation/AppRouter'
 import { DeviceNode } from '../model/DeviceModels'
 import { repositoryFactory } from '../repository/RepositoryFactory'
 import { AppTheme } from '../ui/AppTheme'
+import { sessionStore } from '../session/SessionStore'
 
 @Component
 export struct DeviceListContent {
@@ -16,10 +17,12 @@ export struct DeviceListContent {
   @State total: number = 0
   @State loading: boolean = false
   @State errorMessage: string = ''
+  @State writable: boolean = false
   private requestVersion: number = 0
   private requestedPage: number = 1
 
   aboutToAppear(): void {
+    this.writable = sessionStore.getSnapshot().context?.authorities.includes('DEVICE_WRITE') ?? false
     this.load(1)
   }
 
@@ -61,6 +64,7 @@ export struct DeviceListContent {
   private statusText(status: number): string {
     if (status === 1) return '在线'
     if (status === 0) return '离线'
+    if (status === -1) return '已删除'
     return `未知(${status})`
   }
 
@@ -84,6 +88,13 @@ export struct DeviceListContent {
           .height(44).fontSize(13).fontColor(AppTheme.textSoft).backgroundColor(AppTheme.surfaceRaised)
           .border({ width: 1, color: AppTheme.borderStrong }).borderRadius(6)
           .onClick(() => this.load(this.current))
+        if (this.writable) {
+          Button('+')
+            .width(44).height(44).fontSize(24)
+            .fontColor(AppTheme.primaryText).backgroundColor(AppTheme.primaryStrong)
+            .borderRadius(8)
+            .onClick(() => router.pushUrl({ url: 'pages/DeviceEditorPage' }))
+        }
       }
       .width('100%')
 
@@ -196,9 +207,17 @@ export struct DeviceListContent {
 @Entry
 @Component
 struct DeviceListPage {
+  @State contentRevision: number = 0
+
+  onPageShow(): void {
+    this.contentRevision += 1
+  }
+
   build() {
     Column() {
-      DeviceListContent({ embedded: false })
+      ForEach([this.contentRevision], (_revision: number) => {
+        DeviceListContent({ embedded: false })
+      }, (revision: number): string => String(revision))
     }
     .width('100%')
     .height('100%')

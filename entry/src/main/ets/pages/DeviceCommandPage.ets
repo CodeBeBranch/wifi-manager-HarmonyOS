@@ -1,5 +1,4 @@
 import router from '@ohos.router'
-import util from '@ohos.util'
 import { ApiError } from '../model/ApiModels'
 import { resetToLogin, resetToMain } from '../navigation/AppRouter'
 import {
@@ -12,6 +11,7 @@ import {
   isValidIpv4Address,
   isValidMacAddress
 } from '../model/DeviceCommandModels'
+import { utf8ByteLength } from '../model/WifiConfigModels'
 import { deviceCommandPoller } from '../network/DeviceCommandPoller'
 import { repositoryFactory } from '../repository/RepositoryFactory'
 import { sessionStore } from '../session/SessionStore'
@@ -47,7 +47,6 @@ struct DeviceCommandPage {
   private pageVersion: number = 0
   private historyRequestVersion: number = 0
   private submitRequestVersion: number = 0
-  private readonly encoder: util.TextEncoder = new util.TextEncoder('utf-8')
 
   aboutToAppear(): void {
     const snapshot = sessionStore.getSnapshot()
@@ -62,7 +61,7 @@ struct DeviceCommandPage {
     const params = router.getParams() as DeviceCommandParams | null
     this.deviceCode = params?.deviceCode?.trim() ?? ''
     this.deviceName = params?.deviceName?.trim() ?? ''
-    this.writable = snapshot.context?.writable ?? false
+    this.writable = snapshot.context?.authorities.includes('COMMAND_SUBMIT') ?? false
     if (this.deviceCode.length === 0 || this.deviceCode.length > 64) {
       this.errorMessage = '设备编号无效'
       return
@@ -128,7 +127,7 @@ struct DeviceCommandPage {
   private validateForm(): string {
     if (!this.writable) return '当前工作区为只读状态'
     if (this.mode === 'restart') {
-      if (this.encoder.encodeInto(this.reason.trim()).length > 255) {
+      if (utf8ByteLength(this.reason.trim()) > 255) {
         return '重启原因不能超过 255 个 UTF-8 字节'
       }
       return ''
@@ -269,6 +268,16 @@ struct DeviceCommandPage {
       this.pollState = 'terminal'
       this.pollAttempt = 0
     }
+  }
+
+  private openRecordDetail(record: DeviceCommandRecord): void {
+    router.pushUrl({
+      url: 'pages/DeviceCommandDetailPage',
+      params: {
+        deviceCode: record.deviceCode,
+        requestId: record.requestId
+      }
+    })
   }
 
   private actionTitle(): string {
@@ -508,6 +517,18 @@ struct DeviceCommandPage {
                     .fontSize(12).fontColor(this.statusColor(record.status))
                     .layoutWeight(1).textAlign(TextAlign.End)
                 }
+                Row({ space: 8 }) {
+                  Button('跟踪状态')
+                    .layoutWeight(1).height(38).fontSize(12).fontColor(AppTheme.textSoft)
+                    .backgroundColor(AppTheme.surfaceRaised)
+                    .border({ width: 1, color: AppTheme.border }).borderRadius(6)
+                    .onClick(() => this.selectRecord(record))
+                  Button('查看详情')
+                    .layoutWeight(1).height(38).fontSize(12).fontColor(AppTheme.primary)
+                    .backgroundColor(AppTheme.surfaceRaised)
+                    .border({ width: 1, color: AppTheme.border }).borderRadius(6)
+                    .onClick(() => this.openRecordDetail(record))
+                }
                 .width('100%')
                 Text(record.requestId)
                   .fontSize(11).fontColor(AppTheme.muted).width('100%').maxLines(2)
@@ -531,7 +552,6 @@ struct DeviceCommandPage {
               .backgroundColor(AppTheme.surface)
               .border({ width: 1, color: AppTheme.border })
               .borderRadius(8)
-              .onClick(() => this.selectRecord(record))
             }, (record: DeviceCommandRecord): string => `${record.commandId}-${record.requestId}`)
           }
         }

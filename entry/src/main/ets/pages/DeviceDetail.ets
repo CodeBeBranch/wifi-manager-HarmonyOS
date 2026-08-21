@@ -4,6 +4,7 @@ import { resetToLogin } from '../navigation/AppRouter'
 import { DeviceNode } from '../model/DeviceModels'
 import { repositoryFactory } from '../repository/RepositoryFactory'
 import { AppTheme } from '../ui/AppTheme'
+import { sessionStore } from '../session/SessionStore'
 
 interface DeviceDetailParams {
   nodeId: string
@@ -25,11 +26,14 @@ struct DeviceDetailPage {
   @State device: DeviceNode | null = null
   @State loading: boolean = true
   @State errorMessage: string = ''
+  @State writable: boolean = false
+  @State mutating: boolean = false
   private requestVersion: number = 0
 
   aboutToAppear(): void {
     const params = router.getParams() as DeviceDetailParams | null
     this.nodeId = params?.nodeId ?? ''
+    this.writable = sessionStore.getSnapshot().context?.authorities.includes('DEVICE_WRITE') ?? false
     this.load()
   }
 
@@ -92,6 +96,58 @@ struct DeviceDetailPage {
     })
   }
 
+  private openSessions(): void {
+    if (this.device === null) return
+    router.pushUrl({
+      url: 'pages/SessionListPage',
+      params: { nodeId: String(this.device.nodeId) }
+    })
+  }
+
+  private openSignals(): void {
+    if (this.device === null) return
+    router.pushUrl({
+      url: 'pages/DeviceSignalPage',
+      params: {
+        nodeId: String(this.device.nodeId),
+        deviceName: this.device.name
+      }
+    })
+  }
+
+  private openTraffic(): void {
+    if (this.device === null) return
+    router.pushUrl({
+      url: 'pages/DeviceTrafficPage',
+      params: {
+        nodeId: String(this.device.nodeId),
+        deviceName: this.device.name
+      }
+    })
+  }
+
+  private editDevice(): void {
+    router.pushUrl({
+      url: 'pages/DeviceEditorPage',
+      params: { nodeId: this.nodeId }
+    })
+  }
+
+  private async changeDeletedState(): Promise<void> {
+    if (this.device === null || !this.writable || this.mutating) return
+    this.mutating = true
+    this.errorMessage = ''
+    try {
+      this.device = this.device.status === -1
+        ? await repositoryFactory.device().restore(this.nodeId)
+        : await repositoryFactory.device().delete(this.nodeId)
+    } catch (error) {
+      this.errorMessage = error instanceof Error ? error.message : '设备状态更新失败'
+    } finally {
+      this.mutating = false
+    }
+  }
+
   build() {
     Column() {
       Row({ space: 12 }) {
@@ -142,7 +198,8 @@ struct DeviceDetailPage {
                 Text(this.device.name || this.device.deviceCode)
                   .fontSize(20).fontWeight(FontWeight.Bold).fontColor(AppTheme.text).maxLines(1)
                   .textOverflow({ overflow: TextOverflow.Ellipsis })
-                Text(this.device.status === 1 ? '在线' : '离线')
+                Text(this.device.status === 1 ? '在线' :
+                  this.device.status === -1 ? '已删除' : '离线')
                   .fontSize(12)
                   .fontColor(this.device.status === 1 ? AppTheme.successText : AppTheme.muted)
               }
@@ -170,6 +227,48 @@ struct DeviceDetailPage {
               .border({ width: 1, color: AppTheme.primary })
               .borderRadius(8)
               .onClick(() => this.openWifiConfig())
+
+            Row({ space: 8 }) {
+              Button('连接')
+                .layoutWeight(1).height(46).fontSize(13)
+                .fontColor(AppTheme.primary).backgroundColor(AppTheme.surface)
+                .border({ width: 1, color: AppTheme.border }).borderRadius(8)
+                .onClick(() => this.openSessions())
+              Button('信号')
+                .layoutWeight(1).height(46).fontSize(13)
+                .fontColor(AppTheme.primary).backgroundColor(AppTheme.surface)
+                .border({ width: 1, color: AppTheme.border }).borderRadius(8)
+                .onClick(() => this.openSignals())
+              Button('流量')
+                .layoutWeight(1).height(46).fontSize(13)
+                .fontColor(AppTheme.primary).backgroundColor(AppTheme.surface)
+                .border({ width: 1, color: AppTheme.border }).borderRadius(8)
+                .onClick(() => this.openTraffic())
+            }
+            .width('100%')
+
+            if (this.writable) {
+              Row({ space: 8 }) {
+                Button('编辑')
+                  .enabled(this.device.status !== -1 && !this.mutating)
+                  .layoutWeight(1).height(44).fontSize(13)
+                  .fontColor(AppTheme.primary).backgroundColor(AppTheme.surface)
+                  .border({ width: 1, color: AppTheme.primary }).borderRadius(8)
+                  .onClick(() => this.editDevice())
+                Button(this.device.status === -1 ? '恢复' : '删除')
+                  .enabled(!this.mutating)
+                  .layoutWeight(1).height(44).fontSize(13)
+                  .fontColor(this.device.status === -1 ? AppTheme.successText : AppTheme.dangerText)
+                  .backgroundColor(AppTheme.surface)
+                  .border({
+                    width: 1,
+                    color: this.device.status === -1 ? AppTheme.success : AppTheme.danger
+                  })
+                  .borderRadius(8)
+                  .onClick(() => this.changeDeletedState())
+              }
+              .width('100%')
+            }
 
             Column({ space: 13 }) {
               Text('设备信息')

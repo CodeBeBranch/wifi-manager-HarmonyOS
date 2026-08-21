@@ -42,7 +42,20 @@ import {
 } from '../main/ets/model/WifiConfigModels'
 import { NetworkSession, SessionPageResult } from '../main/ets/model/SessionModels'
 import { PlatformTenantPageResult } from '../main/ets/model/TenantModels'
-import { resolveNoticeTargetRoute } from '../main/ets/navigation/AppRouter'
+import { TenantCreateInput } from '../main/ets/model/Hm2Models'
+import { DemoTenantOpsRepository } from '../main/ets/repository/TenantOpsRepository'
+import { DemoTenantDataRepository } from '../main/ets/repository/DemoTenantDataRepository'
+import {
+  MainRootRouteHandoff,
+  MainRootRouteNotifier,
+  mainRootRouteFromParams,
+  resolveNoticeTargetRoute
+} from '../main/ets/navigation/AppRouter'
+import {
+  executeWorkspaceTransition,
+  isWorkspaceTransitionActive,
+  WorkspaceTransitionPlan
+} from '../main/ets/navigation/WorkspaceTransition'
 import { extractRefreshCookie, parseApiResponse } from '../main/ets/network/ApiParser'
 import { httpClient } from '../main/ets/network/HttpClient'
 import { alertSocketClient } from '../main/ets/network/AlertSocketClient'
@@ -70,6 +83,17 @@ import {
 } from '../main/ets/preview/RuntimeMode'
 import { repositoryFactory } from '../main/ets/repository/RepositoryFactory'
 import { publicAuthRepositoryFactory } from '../main/ets/repository/AuthRepository'
+import {
+  DemoPlatformAdminRepository,
+  Hm2PreferenceStorage,
+  PlatformAdminRepositoryFactory,
+  PlatformAdminMutationTracker,
+  platformAdminRepositoryFactory
+} from '../main/ets/repository/PlatformAdminRepository'
+import {
+  DemoSessionPreferenceStorage,
+  SessionStore
+} from '../main/ets/session/SessionStore'
 import { normalizeThemeMode } from '../main/ets/storage/ThemeStore'
 import { normalizeLoginMode } from '../main/ets/storage/LoginPreferenceStore'
 import {
@@ -77,7 +101,9 @@ import {
   hasTenantWorkspace,
   isManagedTenantWorkspace,
   isPlatformWorkspace,
+  MainRootRouteId,
   mainRootRouteId,
+  mainTabIndexForRoute,
   mainTabKey,
   mainTabRenderKey,
   mainTabs,
@@ -91,6 +117,53 @@ interface TestData {
 
 class StubMqttTransport {
   readonly channel: string = 'MQTT'
+}
+
+class FailingPutPreferenceStorage implements Hm2PreferenceStorage {
+  value: string = ''
+  compensationWrites: number = 0
+  failNextPut: boolean = false
+
+  async getString(_key: string, fallback: string = ''): Promise<string> {
+    return this.value.length > 0 ? this.value : fallback
+  }
+
+  async putString(_key: string, value: string): Promise<void> {
+    if (this.failNextPut) {
+      this.failNextPut = false
+      this.value = value
+      throw new Error('flush failed')
+    }
+    this.value = value
+    this.compensationWrites += 1
+  }
+
+  async remove(_key: string): Promise<void> {
+    this.value = ''
+  }
+}
+
+class FailingDemoSessionPreferenceStorage implements DemoSessionPreferenceStorage {
+  value: string = ''
+  putAttempts: number = 0
+  failNextPut: boolean = false
+
+  async getString(_key: string, fallback: string = ''): Promise<string> {
+    return this.value.length > 0 ? this.value : fallback
+  }
+
+  async putString(_key: string, value: string): Promise<void> {
+    this.putAttempts += 1
+    if (this.failNextPut) {
+      this.failNextPut = false
+      throw new Error('flush failed')
+    }
+    this.value = value
+  }
+
+  async remove(_key: string): Promise<void> {
+    this.value = ''
+  }
 }
 
 interface PlatformTenantEnvelopeFixture {
@@ -731,6 +804,7 @@ export default function localUnitTest() {
       expect(mainTabKey(platform, 1)).assertEqual('ORGANIZATIONS')
       expect(mainTabKey(platform, 4)).assertEqual('ME')
       expect(mainRootRouteId(platform, 0)).assertEqual('platform/home')
+      expect(mainTabIndexForRoute(platform, 'platform/accounts')).assertEqual(2)
       expect(mainRootRouteId(platform, 1)).assertEqual('platform/tenants')
       expect(mainRootRouteId(platform, 2)).assertEqual('platform/accounts')
       expect(mainRootRouteId(platform, 3)).assertEqual('platform/services')
@@ -755,6 +829,493 @@ export default function localUnitTest() {
       expect(mainRootRouteId(tenant, 2)).assertEqual('tenant/alerts')
       expect(mainRootRouteId(tenant, 3)).assertEqual('tenant/services')
       expect(mainRootRouteId(tenant, 4)).assertEqual('me/home')
+    })
+
+    it('providesHm2TenantPagingFilteringAndCreation', 0, async () => {
+      const repository = new DemoPlatformAdminRepository()
+      const first = await repository.listTenants(1, 2, '', '')
+      const second = await repository.listTenants(2, 2, '', '')
+      const disabled = await repository.listTenants(1, 20, '', 'DISABLED')
+      const filtered = await repository.listTenants(1, 20, '分部', '')
+      expect(first.total).assertEqual(4)
+      expect(first.records.length).assertEqual(2)
+      expect(second.records.length).assertEqual(2)
+      expect(disabled.total).assertEqual(1)
+      expect(filtered.records[0].tenantCode).assertEqual('branch-office')
+      expect(filtered.records[0].name).assertEqual('分部办公网络')
+
+      const input: TenantCreateInput = {
+        tenantCode: 'south-office',
+        name: '南区办公网络',
+        timezone: 'Asia/Shanghai',
+        ownerUsername: 'trial-user'
+      }
+      const created = await repository.createTenant(input)
+      expect(created.tenantCode).assertEqual('south-office')
+      expect((await repository.listTenants(1, 20, 'south-office', '')).total).assertEqual(1)
+      const adminOwned = await repository.createTenant({
+        tenantCode: 'admin-owned',
+        name: '管理员负责组织',
+        timezone: 'Asia/Shanghai',
+        ownerUsername: 'lab-admin'
+      })
+      const ownerMembers = await repository.listTenantMembers(adminOwned.tenantId, '')
+      expect(ownerMembers.length).assertEqual(1)
+      expect(ownerMembers[0].role).assertEqual('TENANT_OWNER')
+
+      let conflict = false
+      try {
+        await repository.createTenant(input)
+      } catch (error) {
+        conflict = error instanceof ApiError && error.httpStatus === 409
+      }
+      expect(conflict).assertTrue()
+    })
+
+    it('updatesHm2TenantAndKeepsManagedMembersReadOnly', 0, async () => {
+      const repository = new DemoPlatformAdminRepository()
+      const updated = await repository.updateTenant('preview-tenant-01', {
+        name: '边缘网络联合实验室',
+        timezone: 'Asia/Shanghai'
+      })
+      expect(updated.name).assertEqual('边缘网络联合实验室')
+      expect(updated.version).assertEqual(6)
+      const disabled = await repository.updateTenantStatus('preview-tenant-01', 'DISABLED')
+      expect(disabled.status).assertEqual('DISABLED')
+      const members = await repository.listTenantMembers('preview-tenant-01', '管理员')
+      expect(members.length).assertEqual(1)
+      expect(members[0].role).assertEqual('TENANT_ADMIN')
+    })
+
+    it('coordinatesHm2WorkspaceTransitionAndRollsBackRootFailure', 0, async () => {
+      let context = 'PLATFORM'
+      let cache = ''
+      const successSteps = new WorkspaceTransitionPlan(
+        async (): Promise<void> => {
+          expect(isWorkspaceTransitionActive()).assertTrue()
+          context = 'PLATFORM_TENANT'
+        },
+        async (): Promise<void> => {},
+        async (): Promise<void> => {
+          context = 'PLATFORM'
+        },
+        (): void => {
+          cache = 'preview-tenant-01'
+        },
+        (): void => {
+          cache = ''
+        }
+      )
+      await executeWorkspaceTransition(successSteps)
+      expect(context).assertEqual('PLATFORM_TENANT')
+      expect(cache).assertEqual('preview-tenant-01')
+      expect(isWorkspaceTransitionActive()).assertFalse()
+
+      context = 'PLATFORM'
+      cache = ''
+      let failed = false
+      try {
+        const failureSteps = new WorkspaceTransitionPlan(
+          async (): Promise<void> => {
+            context = 'PLATFORM_TENANT'
+          },
+          async (): Promise<void> => {
+            throw new Error('route failed')
+          },
+          async (): Promise<void> => {
+            context = 'PLATFORM'
+          },
+          (): void => {
+            cache = 'preview-tenant-01'
+          },
+          (): void => {
+            cache = ''
+          }
+        )
+        await executeWorkspaceTransition(failureSteps)
+      } catch (_) {
+        failed = true
+      }
+      expect(failed).assertTrue()
+      expect(context).assertEqual('PLATFORM')
+      expect(cache).assertEqual('')
+      expect(isWorkspaceTransitionActive()).assertFalse()
+    })
+
+    it('keepsTransitionCacheAlignedWhenContextRollbackFails', 0, async () => {
+      let context = 'PLATFORM'
+      let cache = ''
+      let rollbackFailed = false
+      try {
+        await executeWorkspaceTransition(new WorkspaceTransitionPlan(
+          async (): Promise<void> => {
+            context = 'PLATFORM_TENANT'
+          },
+          async (): Promise<void> => {
+            throw new Error('route failed')
+          },
+          async (): Promise<void> => {
+            context = 'PLATFORM'
+            throw new Error('context rollback persistence failed')
+          },
+          (): void => {
+            cache = 'preview-tenant-01'
+          },
+          (): void => {
+            cache = ''
+          }
+        ))
+      } catch (error) {
+        rollbackFailed = error instanceof Error &&
+          error.message === 'context rollback persistence failed'
+      }
+      expect(rollbackFailed).assertTrue()
+      expect(context).assertEqual('PLATFORM')
+      expect(cache).assertEqual('')
+      expect(isWorkspaceTransitionActive()).assertFalse()
+    })
+
+    it('keepsManagedWorkspaceTransientAcrossColdStart', 0, async () => {
+      runtimeModeStore.activateDemo()
+      const source = new PreviewSession()
+      const platformSnapshot = source.tryLogin({
+        loginType: 'username',
+        account: 'superadmin',
+        password: '123456'
+      })
+      expect(platformSnapshot === null).assertFalse()
+      if (platformSnapshot === null) return
+
+      const storage = new FailingDemoSessionPreferenceStorage()
+      storage.value = JSON.stringify(platformSnapshot)
+      const activeStore = new SessionStore(storage)
+      await activeStore.initialize()
+      await activeStore.enterPlatformTenant('preview-tenant-01', '成功切换')
+      expect(activeStore.getSnapshot().context?.contextType ?? '')
+        .assertEqual('PLATFORM_TENANT')
+      expect((JSON.parse(storage.value) as SessionSnapshot).context?.contextType ?? '')
+        .assertEqual('PLATFORM')
+
+      const coldStartStore = new SessionStore(storage)
+      await coldStartStore.initialize()
+      expect(coldStartStore.getSnapshot().context?.contextType ?? '')
+        .assertEqual('PLATFORM')
+    })
+
+    it('migratesLegacyManagedWorkspacePersistenceBackToPlatform', 0, async () => {
+      runtimeModeStore.activateDemo()
+      const source = new PreviewSession()
+      const platformSnapshot = source.tryLogin({
+        loginType: 'username',
+        account: 'superadmin',
+        password: '123456'
+      })
+      expect(platformSnapshot === null).assertFalse()
+      if (platformSnapshot === null) return
+      const managedSnapshot = source.enterTenant('preview-tenant-01')
+
+      const storage = new FailingDemoSessionPreferenceStorage()
+      storage.value = JSON.stringify(managedSnapshot)
+      const coldStartStore = new SessionStore(storage)
+      await coldStartStore.initialize()
+      expect(coldStartStore.getSnapshot().context?.contextType ?? '')
+        .assertEqual('PLATFORM')
+      expect((JSON.parse(storage.value) as SessionSnapshot).context?.contextType ?? '')
+        .assertEqual('PLATFORM')
+    })
+
+    it('acceptsMainPageColdStartWithoutRouteParams', 0, () => {
+      expect(mainRootRouteFromParams(undefined)).assertNull()
+      expect(mainRootRouteFromParams(null)).assertNull()
+      expect(mainRootRouteFromParams({ rootRouteId: 'platform/services' }))
+        .assertEqual('platform/services')
+      const handoff = new MainRootRouteHandoff()
+      handoff.prepare('platform/tenants')
+      expect(handoff.consume(undefined)).assertEqual('platform/tenants')
+      expect(handoff.consume(undefined)).assertNull()
+      handoff.prepare('platform/accounts')
+      expect(handoff.consume({ rootRouteId: 'platform/services' }))
+        .assertEqual('platform/services')
+      expect(handoff.consume(undefined)).assertNull()
+      const notifier = new MainRootRouteNotifier()
+      let notifiedRoute = ''
+      const listener = (routeId: MainRootRouteId): void => {
+        notifiedRoute = routeId
+      }
+      notifier.add(listener)
+      notifier.publish('platform/tenants')
+      expect(notifiedRoute).assertEqual('platform/tenants')
+      notifier.remove(listener)
+      notifier.publish('platform/services')
+      expect(notifiedRoute).assertEqual('platform/tenants')
+
+      let deferredRoute = ''
+      const deferred = new MainRootRouteNotifier()
+      deferred.publish('platform/tenants')
+      deferred.add((routeId: MainRootRouteId): void => {
+        deferredRoute = routeId
+      })
+      expect(deferredRoute).assertEqual('platform/tenants')
+    })
+
+    it('restoresDynamicHm2ManagedTenantContext', 0, () => {
+      const source = new PreviewSession()
+      source.tryLogin({
+        loginType: 'username',
+        account: 'superadmin',
+        password: '123456'
+      })
+      const managed = source.enterTenant('preview-tenant-05')
+      const restored = new PreviewSession()
+      expect(restored.restore(managed)).assertTrue()
+      expect(restored.getSnapshot().context?.contextType ?? '').assertEqual('PLATFORM_TENANT')
+      expect(restored.getSnapshot().context?.tenantId ?? '').assertEqual('preview-tenant-05')
+    })
+
+    it('updatesHm2AccountStatusWithoutAllowingSelfSuspension', 0, async () => {
+      const repository = new DemoPlatformAdminRepository()
+      const suspended = await repository.updateAccountStatus('2108', 'SUSPENDED')
+      expect(suspended.status).assertEqual('SUSPENDED')
+      expect((await repository.listAccounts(1, 20, '', 'SUSPENDED')).total).assertEqual(2)
+      let forbidden = false
+      try {
+        await repository.updateAccountStatus('1000', 'SUSPENDED')
+      } catch (error) {
+        forbidden = error instanceof ApiError && error.errorKey === 'SELF_STATUS_FORBIDDEN'
+      }
+      expect(forbidden).assertTrue()
+    })
+
+    it('runsHm2DeleteReviewAsSingleDirectionStateMachine', 0, async () => {
+      const repository = new DemoPlatformAdminRepository()
+      const review = await repository.submitAccountDeletion('2108', '试用结束，清理账号。')
+      expect(review.status).assertEqual('PENDING')
+      const rejected = await repository.decideAccountReview(review.reviewId, false, '暂时保留')
+      expect(rejected.status).assertEqual('REJECTED')
+      expect((await repository.accountDetail('2108')).status).assertEqual('ACTIVE')
+
+      let repeated = false
+      try {
+        await repository.decideAccountReview(review.reviewId, true, '')
+      } catch (error) {
+        repeated = error instanceof ApiError && error.errorKey === 'DELETE_REVIEW_FINISHED'
+      }
+      expect(repeated).assertTrue()
+
+      const second = await repository.submitAccountDeletion('2108', '确认不再使用。')
+      await repository.decideAccountReview(second.reviewId, true, '通过')
+      expect((await repository.accountDetail('2108')).status).assertEqual('DELETED')
+    })
+
+    it('keepsHm2SaasPlansReadOnlyAndSearchable', 0, async () => {
+      const repository = new DemoPlatformAdminRepository()
+      const published = await repository.listSaasPlans(1, 20, '', 'PUBLISHED')
+      const pro = await repository.listSaasPlans(1, 20, 'PRO', '')
+      expect(published.total).assertEqual(2)
+      expect(pro.total).assertEqual(1)
+      const detail = await repository.saasPlanDetail(pro.records[0].planId)
+      expect(detail.features.length).assertEqual(3)
+      expect(detail.status).assertEqual('PUBLISHED')
+    })
+
+    it('clearsHm2ManagedTenantCacheAndResetsState', 0, async () => {
+      const repository = new DemoPlatformAdminRepository()
+      repository.cacheManagedTenant('preview-tenant-02')
+      expect(repository.managedTenantCacheId()).assertEqual('preview-tenant-02')
+      repository.clearManagedTenantCache()
+      expect(repository.managedTenantCacheId()).assertEqual('')
+      await repository.updateTenantStatus('preview-tenant-01', 'DISABLED')
+      await repository.resetDemo()
+      expect((await repository.tenantDetail('preview-tenant-01')).status).assertEqual('ACTIVE')
+    })
+
+    it('compensatesHm2PreferencesWhenResetFlushFails', 0, async () => {
+      const storage = new FailingPutPreferenceStorage()
+      const repository = new DemoPlatformAdminRepository(true, storage)
+      await repository.updateTenantStatus('preview-tenant-01', 'DISABLED')
+      const beforeReset = storage.value
+      storage.compensationWrites = 0
+      storage.failNextPut = true
+      let failed = false
+      try {
+        await repository.resetDemo()
+      } catch (_) {
+        failed = true
+      }
+      expect(failed).assertTrue()
+      expect(storage.compensationWrites).assertEqual(1)
+      expect(storage.value).assertEqual(beforeReset)
+      expect((await repository.tenantDetail('preview-tenant-01')).status).assertEqual('DISABLED')
+    })
+
+    it('compensatesHm2PreferencesWhenMutationFlushFails', 0, async () => {
+      const storage = new FailingPutPreferenceStorage()
+      const repository = new DemoPlatformAdminRepository(true, storage)
+      await repository.updateTenantStatus('preview-tenant-01', 'DISABLED')
+      const beforeMutation = storage.value
+      storage.compensationWrites = 0
+      storage.failNextPut = true
+      let failed = false
+      try {
+        await repository.updateTenantStatus('preview-tenant-01', 'ACTIVE')
+      } catch (_) {
+        failed = true
+      }
+      expect(failed).assertTrue()
+      expect(storage.compensationWrites).assertEqual(1)
+      expect(storage.value).assertEqual(beforeMutation)
+      expect((await repository.tenantDetail('preview-tenant-01')).status).assertEqual('DISABLED')
+    })
+
+    it('tracksHm2MutationsAcrossPageHideAndShow', 0, () => {
+      const tracker = new PlatformAdminMutationTracker()
+      const hiddenRevision = tracker.current()
+      tracker.mark()
+      expect(hiddenRevision).assertEqual(0)
+      expect(tracker.current()).assertEqual(1)
+    })
+
+    it('isolatesHm2DemoFactoryAndCoversFrozenScenarios', 0, async () => {
+      runtimeModeStore.activateDemo()
+      const factory = new PlatformAdminRepositoryFactory()
+      expect(factory.realRepositoryCreatedForTest()).assertFalse()
+      factory.current()
+      expect(factory.realRepositoryCreatedForTest()).assertFalse()
+
+      const repository = factory.demoForTest()
+      repository.setDemoScenario('EMPTY')
+      expect((await repository.summary()).tenantTotal).assertEqual(0)
+      expect((await repository.listTenants(1, 20, '', '')).total).assertEqual(0)
+
+      repository.setDemoScenario('FILTER_EMPTY')
+      expect((await repository.listTenants(1, 20, '边缘', '')).total).assertEqual(0)
+      expect((await repository.listTenants(1, 20, '', '')).total).assertEqual(4)
+
+      repository.setDemoScenario('LOADING')
+      let loadingCompleted = false
+      const loadingTask = repository.summary().then((): void => {
+        loadingCompleted = true
+      })
+      await Promise.resolve()
+      expect(loadingCompleted).assertFalse()
+      await loadingTask
+      expect(loadingCompleted).assertTrue()
+
+      repository.setDemoScenario('PARTIAL_FAILURE')
+      expect((await repository.listTenants(1, 20, '', '')).total).assertEqual(4)
+      let partialStatus = 0
+      try {
+        await repository.summary()
+      } catch (error) {
+        partialStatus = error instanceof ApiError ? error.httpStatus : 0
+      }
+      expect(partialStatus).assertEqual(502)
+
+      repository.setDemoScenario('FORBIDDEN')
+      let forbiddenStatus = 0
+      try {
+        await repository.listAccounts(1, 20, '', '')
+      } catch (error) {
+        forbiddenStatus = error instanceof ApiError ? error.httpStatus : 0
+      }
+      expect(forbiddenStatus).assertEqual(403)
+
+      repository.setDemoScenario('CONFLICT')
+      let conflictStatus = 0
+      try {
+        await repository.updateTenantStatus('preview-tenant-01', 'DISABLED')
+      } catch (error) {
+        conflictStatus = error instanceof ApiError ? error.httpStatus : 0
+      }
+      expect(conflictStatus).assertEqual(409)
+
+      repository.setDemoScenario('RATE_LIMITED')
+      let rateStatus = 0
+      try {
+        await repository.listSaasPlans(1, 20, '', '')
+      } catch (error) {
+        rateStatus = error instanceof ApiError ? error.httpStatus : 0
+      }
+      expect(rateStatus).assertEqual(429)
+
+      repository.setDemoScenario('DEPENDENCY_DOWN')
+      let dependencyStatus = 0
+      try {
+        await repository.accountDetail('2108')
+      } catch (error) {
+        dependencyStatus = error instanceof ApiError ? error.httpStatus : 0
+      }
+      expect(dependencyStatus).assertEqual(503)
+
+      await repository.resetDemo()
+      expect(repository.demoScenario()).assertEqual('NORMAL')
+      runtimeModeStore.activateReal()
+    })
+
+    it('keepsCompleteHm2RepositoryJourneyOffline', 0, async () => {
+      runtimeModeStore.activateDemo()
+      runtimeModeStore.resetNetworkSentinel()
+      networkTransportFactory.resetCounters()
+      const repository = platformAdminRepositoryFactory.demoForTest()
+      await repository.summary()
+      await repository.listTenants(1, 2, '', '')
+      await repository.tenantDetail('preview-tenant-01')
+      await repository.listTenantMembers('preview-tenant-01', '')
+      await repository.listAccounts(1, 3, '', '')
+      await repository.accountDetail('2108')
+      const review = await repository.submitAccountDeletion('2108', '离线演示审核')
+      await repository.accountReviewDetail(review.reviewId)
+      const rejectedReview = await repository.decideAccountReview(review.reviewId, false, '离线驳回')
+      expect(rejectedReview.status).assertEqual('REJECTED')
+      await repository.resetDemo()
+      const approval = await repository.submitAccountDeletion('2108', '离线演示批准')
+      const approvedReview = await repository.decideAccountReview(approval.reviewId, true, '离线批准')
+      const deletedAccount = await repository.accountDetail('2108')
+      expect(approvedReview.status).assertEqual('APPROVED')
+      expect(deletedAccount.status).assertEqual('DELETED')
+      await repository.listSaasPlans(1, 20, '', '')
+      await repository.saasPlanDetail('plan-pro')
+      expect(runtimeModeStore.getBlockedNetworkAttempts()).assertEqual(0)
+      expect(networkTransportFactory.snapshot().http).assertEqual(0)
+      expect(networkTransportFactory.snapshot().webSocket).assertEqual(0)
+      expect(networkTransportFactory.snapshot().mqtt).assertEqual(0)
+      runtimeModeStore.activateReal()
+    })
+
+    it('keepsHm3BlacklistTenantScopedAndValidatesMutations', 0, async () => {
+      const repository = new DemoTenantOpsRepository()
+      const initial = await repository.listBlacklist('preview-tenant-01', { keyword: '' })
+      expect(initial.length).assertEqual(2)
+      expect((await repository.listBlacklist('preview-tenant-02', { keyword: '' })).length)
+        .assertEqual(0)
+
+      const created = await repository.addBlacklist(
+        'preview-tenant-01',
+        'aa:bb:cc:77:88:99',
+        'HM-3 offline audit'
+      )
+      expect(created.mac).assertEqual('AA:BB:CC:77:88:99')
+      expect((await repository.listBlacklist('preview-tenant-01', { keyword: '77:88' })).length)
+        .assertEqual(1)
+
+      let duplicateStatus = 0
+      try {
+        await repository.addBlacklist(
+          'preview-tenant-01',
+          'AA:BB:CC:77:88:99',
+          'duplicate'
+        )
+      } catch (error) {
+        duplicateStatus = error instanceof ApiError ? error.httpStatus : 0
+      }
+      expect(duplicateStatus).assertEqual(409)
+
+      await repository.removeBlacklist('preview-tenant-01', created.id)
+      expect((await repository.listBlacklist('preview-tenant-01', { keyword: '77:88' })).length)
+        .assertEqual(0)
+      await repository.resetDemo()
+      expect((await repository.listBlacklist('preview-tenant-01', { keyword: '' })).length)
+        .assertEqual(2)
     })
 
     it('keepsMemberMainNavigationInsideTenantBoundaries', 0, () => {
@@ -795,6 +1356,171 @@ export default function localUnitTest() {
         .assertEqual('2:TENANT:member/services')
       expect(mainTabRenderKey(member, mainTabs(member)[3]))
         .assertEqual('2:TENANT:me/home')
+    })
+
+    it('isolatesHm3DeviceDataByTenant', 0, () => {
+      const repository = new DemoTenantDataRepository()
+      const edgeLab = repository.listDevices('preview-tenant-01', 1, 20, '')
+      const branch = repository.listDevices('preview-tenant-02', 1, 20, '')
+      expect(edgeLab.total).assertEqual(3)
+      expect(branch.total).assertEqual(2)
+      expect(edgeLab.records[0].deviceCode === branch.records[0].deviceCode).assertFalse()
+
+      let crossTenantStatus = 0
+      try {
+        repository.deviceDetail('preview-tenant-02', String(edgeLab.records[0].nodeId))
+      } catch (error) {
+        crossTenantStatus = error instanceof ApiError ? error.httpStatus : 0
+      }
+      expect(crossTenantStatus).assertEqual(404)
+    })
+
+    it('supportsHm3DeviceCrudAndConflictRecovery', 0, () => {
+      const repository = new DemoTenantDataRepository()
+      const created = repository.createDevice('preview-tenant-01', {
+        deviceCode: 'EDGE-DEMO-99',
+        name: '验收设备',
+        location: '移动测试区',
+        ip: '192.168.99.1',
+        maxClients: 16
+      })
+      expect(created.status).assertEqual(0)
+      const updated = repository.updateDevice('preview-tenant-01', String(created.nodeId), {
+        deviceCode: 'EDGE-DEMO-99',
+        name: '验收设备已更新',
+        location: '移动测试区',
+        ip: '192.168.99.2',
+        maxClients: 24
+      })
+      expect(updated.maxClients).assertEqual(24)
+
+      let duplicateStatus = 0
+      try {
+        repository.createDevice('preview-tenant-01', {
+          deviceCode: 'EDGE-DEMO-99',
+          name: '重复设备',
+          location: '',
+          ip: '',
+          maxClients: 8
+        })
+      } catch (error) {
+        duplicateStatus = error instanceof ApiError ? error.httpStatus : 0
+      }
+      expect(duplicateStatus).assertEqual(409)
+      expect(repository.deleteDevice(
+        'preview-tenant-01',
+        String(created.nodeId)
+      ).status).assertEqual(-1)
+      expect(repository.restoreDevice(
+        'preview-tenant-01',
+        String(created.nodeId)
+      ).status).assertEqual(0)
+    })
+
+    it('supportsHm3SessionRevokeAndDuplicateConflict', 0, () => {
+      const repository = new DemoTenantDataRepository()
+      const sessions = repository.listSessions('preview-tenant-02', {
+        current: 1,
+        size: 20,
+        mac: '',
+        nodeId: '',
+        userId: '',
+        status: ''
+      }, true)
+      expect(sessions.total).assertEqual(1)
+      const closed = repository.closeSession('preview-tenant-02', sessions.records[0].sessionId)
+      expect(closed.status).assertEqual(0)
+      let duplicateStatus = 0
+      try {
+        repository.closeSession('preview-tenant-02', closed.sessionId)
+      } catch (error) {
+        duplicateStatus = error instanceof ApiError ? error.httpStatus : 0
+      }
+      expect(duplicateStatus).assertEqual(409)
+    })
+
+    it('tracksHm3CommandAndWifiToTerminalState', 0, () => {
+      const repository = new DemoTenantDataRepository()
+      const command = repository.submitCommand(
+        'preview-tenant-02',
+        'EDGE-BJ-01',
+        'KICK',
+        'MANUAL_RESTART',
+        null
+      )
+      const firstCommand = repository.findCommand(
+        'preview-tenant-02',
+        'EDGE-BJ-01',
+        command.requestId
+      )
+      const finalCommand = repository.findCommand(
+        'preview-tenant-02',
+        'EDGE-BJ-01',
+        command.requestId
+      )
+      expect(firstCommand?.status ?? -1).assertEqual(1)
+      expect(finalCommand?.status ?? -1).assertEqual(2)
+
+      const task = repository.stageWifi(
+        'preview-tenant-02',
+        'EDGE-BJ-01',
+        'Branch-Secure',
+        '12345678'
+      )
+      expect(repository.findWifi(
+        'preview-tenant-02',
+        'EDGE-BJ-01',
+        task.requestId
+      ).status).assertEqual(1)
+      expect(repository.findWifi(
+        'preview-tenant-02',
+        'EDGE-BJ-01',
+        task.requestId
+      ).status).assertEqual(2)
+      expect(repository.listSignals('preview-tenant-02', '201').length).assertEqual(2)
+      expect(repository.listTraffic('preview-tenant-02', '201').length).assertEqual(3)
+    })
+
+    it('coversHm3DemoScenarioMatrix', 0, () => {
+      const repository = new DemoTenantDataRepository()
+      repository.setDemoScenario('EMPTY')
+      expect(repository.listDevices('preview-tenant-01', 1, 20, '').total).assertEqual(0)
+      repository.setDemoScenario('FILTER_EMPTY')
+      expect(repository.listDevices('preview-tenant-01', 1, 20, 'EDGE').total).assertEqual(0)
+
+      const scenarios: string[] = ['FORBIDDEN', 'RATE_LIMITED', 'DEPENDENCY_DOWN']
+      const statuses: number[] = [403, 429, 503]
+      for (let index = 0; index < scenarios.length; index += 1) {
+        repository.setDemoScenario(scenarios[index] as
+          'FORBIDDEN' | 'RATE_LIMITED' | 'DEPENDENCY_DOWN')
+        let status = 0
+        try {
+          repository.listDevices('preview-tenant-01', 1, 20, '')
+        } catch (error) {
+          status = error instanceof ApiError ? error.httpStatus : 0
+        }
+        expect(status).assertEqual(statuses[index])
+      }
+
+      repository.setDemoScenario('PARTIAL_FAILURE')
+      let partialStatus = 0
+      try {
+        repository.listTraffic('preview-tenant-01', '101')
+      } catch (error) {
+        partialStatus = error instanceof ApiError ? error.httpStatus : 0
+      }
+      expect(partialStatus).assertEqual(502)
+
+      repository.setDemoScenario('CONFLICT')
+      let conflictStatus = 0
+      try {
+        repository.deleteDevice('preview-tenant-01', '101')
+      } catch (error) {
+        conflictStatus = error instanceof ApiError ? error.httpStatus : 0
+      }
+      expect(conflictStatus).assertEqual(409)
+      repository.reset()
+      expect(repository.demoScenario()).assertEqual('NORMAL')
     })
 
     it('normalizesPersistedRuntimeModeWithoutFallingBackToDemo', 0, () => {

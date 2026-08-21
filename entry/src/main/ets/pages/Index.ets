@@ -1,4 +1,5 @@
-import { resetToLogin, resetToMain } from '../navigation/AppRouter'
+import { PlatformTenantDetailParams } from '../model/Hm2Models'
+import { replaceRoot, resetToLogin, resetToMain } from '../navigation/AppRouter'
 import { sessionStore } from '../session/SessionStore'
 import { AppTheme } from '../ui/AppTheme'
 
@@ -15,6 +16,19 @@ struct LaunchGatePage {
   private async restoreSession(): Promise<void> {
     const state = await sessionStore.restore()
     if (state === 'active') {
+      const snapshot = sessionStore.getSnapshot()
+      if (snapshot.role === 0 &&
+        snapshot.context?.contextType === 'PLATFORM_TENANT' &&
+        snapshot.context.tenantId.length > 0) {
+        const params: PlatformTenantDetailParams = {
+          tenantId: snapshot.context.tenantId
+        }
+        try {
+          await replaceRoot('pages/PlatformTenantDetailPage', params)
+          return
+        } catch (_) {
+        }
+      }
       resetToMain()
       return
     }

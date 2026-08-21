@@ -1,12 +1,21 @@
 import router from '@ohos.router'
+import { hilog } from '@kit.PerformanceAnalysisKit'
 import { AlertEvent, AlertQuery } from '../model/AlertModels'
 import { ApiError } from '../model/ApiModels'
 import { SessionSnapshot, anonymousSnapshot } from '../model/AuthModels'
 import { DeviceNode } from '../model/DeviceModels'
 import { SessionQuery } from '../model/SessionModels'
 import { repositoryFactory } from '../repository/RepositoryFactory'
+import { platformAdminMutationRevision } from '../repository/PlatformAdminRepository'
 import { SessionListener, sessionStore } from '../session/SessionStore'
-import { resetToLogin } from '../navigation/AppRouter'
+import {
+  MainPageParams,
+  addMainRootRouteListener,
+  mainRootRouteFromParams,
+  removeMainRootRouteListener,
+  resetToLogin
+} from '../navigation/AppRouter'
+import { isWorkspaceTransitionActive, leaveManagedTenant } from '../navigation/WorkspaceTransition'
 import { AppTheme } from '../ui/AppTheme'
 import {
   canReadAdminWorkspace,
@@ -17,6 +26,7 @@ import {
   MainTab,
   MainTabKey,
   mainTabKey,
+  mainTabIndexForRoute,
   mainRootRouteId,
   mainTabs,
   mainTabRenderKey,
@@ -26,7 +36,13 @@ import {
 import { AlertListContent } from './AlertListPage'
 import { DeviceListContent } from './DeviceListPage'
 import { PlatformTenantListContent } from './PlatformTenantListPage'
+import {
+  PlatformAccountListContent,
+  PlatformHomeContent,
+  PlatformServiceContent
+} from './PlatformRootContent'
 import { SessionListContent } from './SessionListPage'
+import { TenantServiceContent } from './TenantServiceContent'
 
 interface DeviceDetailParams {
   nodeId: string
@@ -35,6 +51,8 @@ interface DeviceDetailParams {
 interface AlertDetailParams {
   id: string
 }
+
+const ROUTE_LOG_DOMAIN = 0x0000
 
 @Entry
 @Component
@@ -52,8 +70,16 @@ struct MainPage {
   @State loggingOut: boolean = false
   @State contextSwitching: boolean = false
   @State accountError: string = ''
+  @State platformMutationRevision: number = 0
+  @State tenantContentRevision: number = 0
   private homeRequestVersion: number = 0
+  private rootRouteListener = (rootRouteId: MainRootRouteId): void => {
+    this.selectedTab = mainTabIndexForRoute(this.snapshot, rootRouteId)
+  }
   private sessionListener: SessionListener = (next: SessionSnapshot): void => {
+    if (isWorkspaceTransitionActive()) {
+      return
+    }
     const workspaceChanged = this.snapshot.role !== next.role ||
       this.snapshot.context?.contextType !== next.context?.contextType ||
       this.snapshot.context?.tenantId !== next.context?.tenantId
@@ -70,18 +96,32 @@ struct MainPage {
   }
 
   aboutToAppear(): void {
-    sessionStore.addListener(this.sessionListener)
     this.snapshot = sessionStore.getSnapshot()
     this.previewMode = sessionStore.isPreviewMode()
     if (!this.snapshot.authenticated) {
       resetToLogin()
       return
     }
+    sessionStore.addListener(this.sessionListener)
+    addMainRootRouteListener(this.rootRouteListener)
+    const rootRouteId = mainRootRouteFromParams(router.getParams() as MainPageParams | null | undefined)
+    hilog.info(ROUTE_LOG_DOMAIN, 'wifi-route',
+      'main appear root %{public}s context %{public}s',
+      rootRouteId ?? 'NONE', this.snapshot.context?.contextType ?? 'NONE')
+    if (rootRouteId !== null) {
+      this.selectedTab = mainTabIndexForRoute(this.snapshot, rootRouteId)
+    }
     this.loadHome()
   }
 
   aboutToDisappear(): void {
     sessionStore.removeListener(this.sessionListener)
+    removeMainRootRouteListener(this.rootRouteListener)
+  }
+
+  onPageShow(): void {
+    this.platformMutationRevision = platformAdminMutationRevision()
+    this.tenantContentRevision += 1
   }
 
   private async loadHome(): Promise<void> {
@@ -214,12 +254,12 @@ struct MainPage {
 
   private async returnToPlatform(): Promise<void> {
     if (this.contextSwitching) return
+    const tenantId = this.snapshot.context?.tenantId ?? ''
+    if (tenantId.length === 0) return
     this.contextSwitching = true
     this.accountError = ''
     try {
-      this.snapshot = await sessionStore.returnPlatformContext()
-      this.selectedTab = 0
-      await this.loadHome()
+      await leaveManagedTenant(tenantId)
     } catch (error) {
       this.accountError = error instanceof Error ? error.message : '工作区切换失败，请稍后重试'
     } finally {
@@ -256,26 +296,43 @@ struct MainPage {
 
   build() {
     Column() {
-      if (this.currentRootRouteId() === 'platform/home' ||
-        this.currentRootRouteId() === 'tenant/home' ||
+      if (this.currentRootRouteId() === 'platform/home') {
+        PlatformHomeContent({
+          selectedTab: $selectedTab
+        })
+          .layoutWeight(1)
+      } else if (this.currentRootRouteId() === 'tenant/home' ||
         this.currentRootRouteId() === 'member/home') {
         this.homeTab()
       } else if (this.currentRootRouteId() === 'platform/tenants') {
         PlatformTenantListContent({ embedded: true })
           .layoutWeight(1)
       } else if (this.currentRootRouteId() === 'tenant/devices') {
-        DeviceListContent({ embedded: true })
-          .layoutWeight(1)
+        ForEach([this.tenantContentRevision], (_revision: number) => {
+          DeviceListContent({ embedded: true })
+            .layoutWeight(1)
+        }, (revision: number): string => String(revision))
       } else if (this.currentRootRouteId() === 'tenant/alerts') {
         AlertListContent({ embedded: true })
           .layoutWeight(1)
       } else if (this.currentRootRouteId() === 'member/connections') {
-        SessionListContent({ embedded: true })
-          .layoutWeight(1)
+        ForEach([this.tenantContentRevision], (_revision: number) => {
+          SessionListContent({ embedded: true })
+            .layoutWeight(1)
+        }, (revision: number): string => String(revision))
       } else if (this.currentRootRouteId() === 'me/home') {
         this.profileTab()
       } else if (this.currentRootRouteId() === 'platform/accounts') {
-        this.platformAccountsTab()
+        ForEach([this.platformMutationRevision], (_revision: number) => {
+          PlatformAccountListContent()
+            .layoutWeight(1)
+        }, (revision: number): string => String(revision))
+      } else if (this.currentRootRouteId() === 'platform/services') {
+        PlatformServiceContent()
+          .layoutWeight(1)
+      } else if (this.currentRootRouteId() === 'tenant/services') {
+        TenantServiceContent()
+          .layoutWeight(1)
       } else {
         this.servicesTab()
       }

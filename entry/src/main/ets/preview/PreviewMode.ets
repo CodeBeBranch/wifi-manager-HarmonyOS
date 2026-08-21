@@ -12,7 +12,6 @@ const PREVIEW_CODE = '123456'
 const PREVIEW_PHONE = '13800138000'
 const PREVIEW_EMAIL = 'demo@wifi.local'
 const PREVIEW_TENANT_ID = 'preview-tenant-01'
-const PREVIEW_TENANT_IDS: string[] = [PREVIEW_TENANT_ID, 'preview-tenant-02']
 
 export interface PreviewAccount {
   account: string
@@ -128,7 +127,10 @@ function createTenantContext(role: number): TenantContext {
         'SESSION_READ',
         'SESSION_REVOKE',
         'ALERT_READ',
-        'ALERT_HANDLE'
+        'ALERT_HANDLE',
+        'COMMAND_SUBMIT',
+        'WIFI_CONFIG_SUBMIT',
+        'BLACKLIST_WRITE'
       ]
       : [
         'SESSION_SELF_READ',
@@ -148,6 +150,22 @@ function createSnapshot(account: PreviewAccount, context: TenantContext): Sessio
     role: account.role,
     context: context
   }
+}
+
+export function persistentPreviewSnapshot(snapshot: SessionSnapshot): SessionSnapshot {
+  if (snapshot.authenticated && snapshot.role === 0 &&
+    snapshot.context?.contextType === 'PLATFORM_TENANT') {
+    return {
+      authenticated: snapshot.authenticated,
+      accountState: snapshot.accountState,
+      userId: snapshot.userId,
+      username: snapshot.username,
+      nickname: snapshot.nickname,
+      role: snapshot.role,
+      context: createPlatformContext()
+    }
+  }
+  return snapshot
 }
 
 export class PreviewSession {
@@ -194,7 +212,7 @@ export class PreviewSession {
     }
     const context = account.role === 0 &&
       snapshot.context?.contextType === 'PLATFORM_TENANT' &&
-      PREVIEW_TENANT_IDS.includes(snapshot.context.tenantId)
+      snapshot.context.tenantId.length > 0
       ? createManagedTenantContext(snapshot.context.tenantId)
       : account.role === 0
         ? createPlatformContext()
@@ -236,7 +254,7 @@ export class PreviewSession {
     const currentContext = this.snapshot.context
     const context = account.role === 0 &&
       currentContext?.contextType === 'PLATFORM_TENANT' &&
-      PREVIEW_TENANT_IDS.includes(currentContext.tenantId)
+      currentContext.tenantId.length > 0
       ? createManagedTenantContext(currentContext.tenantId)
       : account.role === 0
         ? createPlatformContext()

@@ -1,8 +1,9 @@
 import router from '@ohos.router'
 import { ApiError } from '../model/ApiModels'
 import { resetToLogin, resetToMain } from '../navigation/AppRouter'
+import { enterManagedTenant } from '../navigation/WorkspaceTransition'
 import { PlatformTenant } from '../model/TenantModels'
-import { repositoryFactory } from '../repository/RepositoryFactory'
+import { platformAdminRepositoryFactory } from '../repository/PlatformAdminRepository'
 import { sessionStore } from '../session/SessionStore'
 import { AppTheme } from '../ui/AppTheme'
 
@@ -12,14 +13,16 @@ export struct PlatformTenantListContent {
   @State tenants: PlatformTenant[] = []
   @State keyword: string = ''
   @State appliedKeyword: string = ''
+  @State statusFilter: string = ''
   @State selectedTenantId: string = ''
   @State reason: string = ''
   @State current: number = 0
-  @State pageSize: number = 20
+  @State pageSize: number = 3
   @State total: number = 0
   @State loading: boolean = false
   @State switching: boolean = false
   @State errorMessage: string = ''
+  private requestVersion: number = 0
 
   aboutToAppear(): void {
     const snapshot = sessionStore.getSnapshot()
@@ -32,16 +35,19 @@ export struct PlatformTenantListContent {
   }
 
   private async loadTenants(reset: boolean): Promise<void> {
-    if (this.loading || this.switching) return
+    if (this.switching) return
+    const version = ++this.requestVersion
     const page = reset ? 1 : this.current + 1
     this.loading = true
     this.errorMessage = ''
     try {
-      const result = await repositoryFactory.tenant().listPlatformTenants(
+      const result = await platformAdminRepositoryFactory.current().listTenants(
         page,
         this.pageSize,
-        this.appliedKeyword
+        this.appliedKeyword,
+        this.statusFilter
       )
+      if (version !== this.requestVersion) return
       this.tenants = reset ? result.records : this.tenants.concat(result.records)
       this.current = Number(result.current)
       this.pageSize = Number(result.size)
@@ -51,13 +57,16 @@ export struct PlatformTenantListContent {
         this.reason = ''
       }
     } catch (error) {
+      if (version !== this.requestVersion) return
       if (error instanceof ApiError && error.httpStatus === 401) {
         resetToLogin()
         return
       }
       this.errorMessage = error instanceof ApiError ? error.message : '组织列表加载失败，请稍后重试'
     } finally {
-      this.loading = false
+      if (version === this.requestVersion) {
+        this.loading = false
+      }
     }
   }
 
@@ -68,6 +77,12 @@ export struct PlatformTenantListContent {
 
   private hasMore(): boolean {
     return this.tenants.length < this.total
+  }
+
+  private applyStatus(status: string): void {
+    if (this.statusFilter === status) return
+    this.statusFilter = status
+    this.loadTenants(true)
   }
 
   private selectTenant(tenant: PlatformTenant): void {
@@ -97,8 +112,7 @@ export struct PlatformTenantListContent {
     this.switching = true
     this.errorMessage = ''
     try {
-      await sessionStore.enterPlatformTenant(tenant.tenantId, reason)
-      resetToMain()
+      await enterManagedTenant(tenant.tenantId, reason)
     } catch (error) {
       this.errorMessage = error instanceof ApiError ? error.message : '工作区切换失败，请稍后重试'
     } finally {
@@ -136,6 +150,15 @@ export struct PlatformTenantListContent {
           }
           .alignItems(HorizontalAlign.Start)
           .layoutWeight(1)
+          Button({ type: ButtonType.Circle }) {
+            SymbolGlyph($r('sys.symbol.plus'))
+              .fontSize(21)
+              .fontColor([AppTheme.primaryText])
+          }
+          .width(42)
+          .height(42)
+          .backgroundColor(AppTheme.primaryStrong)
+          .onClick(() => router.pushUrl({ url: 'pages/PlatformTenantCreatePage' }))
         }
         .width('100%')
 
@@ -164,6 +187,18 @@ export struct PlatformTenantListContent {
         .width('100%')
         .margin({ top: 22 })
 
+        Row() {
+          this.filterButton('全部', '')
+          this.filterButton('可用', 'ACTIVE')
+          this.filterButton('停用', 'DISABLED')
+        }
+        .width('100%')
+        .height(42)
+        .padding(3)
+        .backgroundColor(AppTheme.surfaceMuted)
+        .borderRadius(8)
+        .margin({ top: 12 })
+
         if (this.errorMessage.length > 0) {
           Text(this.errorMessage)
             .fontSize(13)
@@ -174,6 +209,7 @@ export struct PlatformTenantListContent {
             .border({ width: 1, color: AppTheme.danger })
             .borderRadius(6)
             .margin({ top: 14 })
+            .onClick(() => this.loadTenants(true))
         }
 
         if (this.loading && this.tenants.length === 0) {
@@ -295,6 +331,18 @@ export struct PlatformTenantListContent {
     .width('100%')
     .height('100%')
     .backgroundColor(AppTheme.background)
+  }
+
+  @Builder
+  private filterButton(label: string, value: string) {
+    Button(label)
+      .layoutWeight(1)
+      .height(36)
+      .fontSize(13)
+      .fontColor(this.statusFilter === value ? AppTheme.text : AppTheme.muted)
+      .backgroundColor(this.statusFilter === value ? AppTheme.surface : Color.Transparent)
+      .borderRadius(6)
+      .onClick(() => this.applyStatus(value))
   }
 }
 

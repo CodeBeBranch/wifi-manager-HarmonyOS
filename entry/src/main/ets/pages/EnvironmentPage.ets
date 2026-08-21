@@ -1,6 +1,9 @@
 import router from '@ohos.router'
 import { DEBUG } from 'BuildProfile'
+import { Hm2DemoScenario } from '../model/Hm2Models'
 import { accountRepositoryFactory } from '../repository/AccountRepository'
+import { platformAdminRepositoryFactory } from '../repository/PlatformAdminRepository'
+import { repositoryFactory } from '../repository/RepositoryFactory'
 import { RuntimeMode, runtimeModeStore } from '../preview/RuntimeMode'
 import { runtimeSettings } from '../storage/RuntimeSettings'
 import { sessionStore } from '../session/SessionStore'
@@ -13,9 +16,47 @@ struct EnvironmentPage {
   @State saving: boolean = false
   @State message: string = ''
   @State error: string = ''
+  @State hm2Scenario: Hm2DemoScenario = 'NORMAL'
 
   aboutToAppear(): void {
     this.gatewayUrl = runtimeSettings.getGatewayUrl()
+    if (runtimeModeStore.isDemo()) {
+      this.hm2Scenario = platformAdminRepositoryFactory.current().demoScenario()
+      repositoryFactory.setDemoScenario(this.hm2Scenario)
+    }
+  }
+
+  private scenarioLabel(): string {
+    if (this.hm2Scenario === 'EMPTY') return '空数据'
+    if (this.hm2Scenario === 'FILTER_EMPTY') return '筛选无结果'
+    if (this.hm2Scenario === 'LOADING') return '延迟加载'
+    if (this.hm2Scenario === 'PARTIAL_FAILURE') return '局部失败'
+    if (this.hm2Scenario === 'FORBIDDEN') return '无权限'
+    if (this.hm2Scenario === 'CONFLICT') return '状态冲突'
+    if (this.hm2Scenario === 'RATE_LIMITED') return '请求限流'
+    if (this.hm2Scenario === 'DEPENDENCY_DOWN') return '依赖不可用'
+    return '正常'
+  }
+
+  private selectNextScenario(): void {
+    const scenarios: Hm2DemoScenario[] = [
+      'NORMAL',
+      'EMPTY',
+      'FILTER_EMPTY',
+      'LOADING',
+      'PARTIAL_FAILURE',
+      'FORBIDDEN',
+      'CONFLICT',
+      'RATE_LIMITED',
+      'DEPENDENCY_DOWN'
+    ]
+    const current = scenarios.indexOf(this.hm2Scenario)
+    const next = scenarios[(current + 1) % scenarios.length]
+    platformAdminRepositoryFactory.current().setDemoScenario(next)
+    repositoryFactory.setDemoScenario(next)
+    this.hm2Scenario = next
+    this.message = `Demo 场景已切换为${this.scenarioLabel()}`
+    this.error = ''
   }
 
   private async saveGateway(): Promise<void> {
@@ -57,8 +98,11 @@ struct EnvironmentPage {
     this.error = ''
     try {
       await accountRepositoryFactory.current().resetDemo()
+      await platformAdminRepositoryFactory.current().resetDemo()
+      await repositoryFactory.resetDemoTenantOps()
       await sessionStore.resetDemoSession()
       runtimeModeStore.resetNetworkSentinel()
+      this.hm2Scenario = 'NORMAL'
       this.message = '本地演示已重置'
     } catch (error) {
       this.error = error instanceof Error ? error.message : '本地演示重置失败'
@@ -125,6 +169,33 @@ struct EnvironmentPage {
               .fontColor(AppTheme.muted)
               .width('100%')
               .margin({ top: 24, bottom: 8 })
+            Row({ space: 12 }) {
+              Column({ space: 4 }) {
+                Text('平台场景')
+                  .fontSize(15)
+                  .fontWeight(FontWeight.Medium)
+                  .fontColor(AppTheme.text)
+                Text(this.scenarioLabel())
+                  .fontSize(12)
+                  .fontColor(AppTheme.muted)
+              }
+              .alignItems(HorizontalAlign.Start)
+              .layoutWeight(1)
+              Button('切换')
+                .height(36)
+                .fontSize(13)
+                .fontColor(AppTheme.primary)
+                .backgroundColor(AppTheme.surfaceMuted)
+                .borderRadius(6)
+                .onClick(() => this.selectNextScenario())
+            }
+            .width('100%')
+            .height(64)
+            .padding({ left: 14, right: 12 })
+            .backgroundColor(AppTheme.surface)
+            .border({ width: 1, color: AppTheme.border })
+            .borderRadius(8)
+            .margin({ bottom: 10 })
             Button('重置本地演示')
               .width('100%')
               .height(48)

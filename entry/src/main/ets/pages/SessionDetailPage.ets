@@ -30,7 +30,9 @@ struct SessionDetailPage {
     }
     const params = router.getParams() as SessionDetailParams | null
     this.admin = snapshot.role === 0 || snapshot.role === 1
-    this.writable = snapshot.context?.writable ?? false
+    this.writable = snapshot.context?.authorities.includes(
+      this.admin ? 'SESSION_REVOKE' : 'SESSION_SELF_READ'
+    ) ?? false
     try {
       this.session = JSON.parse(params?.session ?? '') as NetworkSession
     } catch (_) {

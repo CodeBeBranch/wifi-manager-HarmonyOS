@@ -10,7 +10,7 @@ import {
   StoredSession
 } from '../model/AuthModels'
 import { httpClient } from '../network/HttpClient'
-import { PreviewSession } from '../preview/PreviewMode'
+import { persistentPreviewSnapshot, PreviewSession } from '../preview/PreviewMode'
 import { RuntimeMode, runtimeModeStore } from '../preview/RuntimeMode'
 import { realAuthRepository } from '../repository/AuthRepository'
 import { appPreferences } from '../storage/AppPreferences'
@@ -21,28 +21,42 @@ const DEMO_SESSION_KEY = 'demo_session_v1'
 
 export type SessionListener = (snapshot: SessionSnapshot) => void
 
-class SessionStore {
+export interface DemoSessionPreferenceStorage {
+  getString(key: string, fallback?: string): Promise<string>
+  putString(key: string, value: string): Promise<void>
+  remove(key: string): Promise<void>
+}
+
+export class SessionStore {
   private session: StoredSession | null = null
   private refreshTask: Promise<void> | null = null
   private previewSession: PreviewSession = new PreviewSession()
   private listeners: SessionListener[] = []
   private demoSessionOperation: Promise<void> = Promise.resolve()
+  private readonly demoPreferenceStorage: DemoSessionPreferenceStorage
+
+  constructor(demoPreferenceStorage: DemoSessionPreferenceStorage = appPreferences) {
+    this.demoPreferenceStorage = demoPreferenceStorage
+  }
 
   async initialize(): Promise<void> {
     this.previewSession.clear()
     if (runtimeModeStore.isDemo()) {
       await this.waitForDemoSessionOperation()
       try {
-        const serializedDemo = await appPreferences.getString(DEMO_SESSION_KEY)
+        const serializedDemo = await this.demoPreferenceStorage.getString(DEMO_SESSION_KEY)
         if (serializedDemo.length > 0) {
           const demoSnapshot = JSON.parse(serializedDemo) as SessionSnapshot
-          if (!this.previewSession.restore(demoSnapshot)) {
-            await appPreferences.remove(DEMO_SESSION_KEY)
+          const persistentSnapshot = persistentPreviewSnapshot(demoSnapshot)
+          if (!this.previewSession.restore(persistentSnapshot)) {
+            await this.removePreferenceBestEffort(DEMO_SESSION_KEY)
+          } else if (persistentSnapshot !== demoSnapshot) {
+            await this.persistDemoSession(persistentSnapshot)
           }
         }
       } catch (_) {
         this.previewSession.clear()
-        await appPreferences.remove(DEMO_SESSION_KEY)
+        await this.removePreferenceBestEffort(DEMO_SESSION_KEY)
       }
       this.session = null
       this.publish()
@@ -149,8 +163,14 @@ class SessionStore {
       if (!this.previewSession.isActive()) {
         throw new ApiError('请先登录', 401, 401, 'AUTHENTICATION_REQUIRED')
       }
+      const previous = this.previewSession.getSnapshot()
       const snapshot = this.previewSession.enterTenant(tenantId)
-      await this.persistDemoSession(snapshot)
+      try {
+        await this.persistDemoSession(snapshot)
+      } catch (error) {
+        this.previewSession.restore(previous)
+        throw error instanceof Error ? error : new Error('演示会话保存失败')
+      }
       this.publish()
       return snapshot
     }
@@ -167,12 +187,44 @@ class SessionStore {
       if (!this.previewSession.isActive()) {
         throw new ApiError('请先登录', 401, 401, 'AUTHENTICATION_REQUIRED')
       }
+      const previous = this.previewSession.getSnapshot()
       const snapshot = this.previewSession.returnToPlatform()
-      await this.persistDemoSession(snapshot)
+      try {
+        await this.persistDemoSession(snapshot)
+      } catch (error) {
+        this.previewSession.restore(previous)
+        throw error instanceof Error ? error : new Error('演示会话保存失败')
+      }
       this.publish()
       return snapshot
     }
     return this.switchContext('/auth/platform-context', undefined, 'PLATFORM', '')
+  }
+
+  async restoreWorkspaceSnapshot(snapshot: SessionSnapshot, reason: string): Promise<SessionSnapshot> {
+    if (!snapshot.authenticated || snapshot.role !== 0 || snapshot.context === null) {
+      throw new ApiError('工作区恢复目标无效', 409, 409, 'WORKSPACE_ROLLBACK_INVALID')
+    }
+    if (runtimeModeStore.isDemo()) {
+      if (!this.previewSession.restore(snapshot)) {
+        throw new ApiError('工作区恢复目标无效', 409, 409, 'WORKSPACE_ROLLBACK_INVALID')
+      }
+      try {
+        await this.persistDemoSession(snapshot)
+      } catch (error) {
+        this.publish()
+        throw error instanceof Error ? error : new Error('演示工作区恢复保存失败')
+      }
+      this.publish()
+      return this.getSnapshot()
+    }
+    if (snapshot.context.contextType === 'PLATFORM_TENANT') {
+      return this.enterPlatformTenant(snapshot.context.tenantId, reason)
+    }
+    if (snapshot.context.contextType === 'PLATFORM') {
+      return this.returnPlatformContext()
+    }
+    throw new ApiError('工作区恢复目标无效', 409, 409, 'WORKSPACE_ROLLBACK_INVALID')
   }
 
   private async switchContext(
@@ -549,16 +601,23 @@ class SessionStore {
   }
 
   private async persistDemoSession(snapshot: SessionSnapshot): Promise<void> {
-    const serialized = JSON.stringify(snapshot)
+    const serialized = JSON.stringify(persistentPreviewSnapshot(snapshot))
     await this.enqueueDemoSessionOperation(async (): Promise<void> => {
-      await appPreferences.putString(DEMO_SESSION_KEY, serialized)
+      await this.demoPreferenceStorage.putString(DEMO_SESSION_KEY, serialized)
     })
   }
 
   private async removeDemoSession(): Promise<void> {
     await this.enqueueDemoSessionOperation(async (): Promise<void> => {
-      await appPreferences.remove(DEMO_SESSION_KEY)
+      await this.demoPreferenceStorage.remove(DEMO_SESSION_KEY)
     })
+  }
+
+  private async removePreferenceBestEffort(key: string): Promise<void> {
+    try {
+      await this.demoPreferenceStorage.remove(key)
+    } catch (_) {
+    }
   }
 
   private async waitForDemoSessionOperation(): Promise<void> {

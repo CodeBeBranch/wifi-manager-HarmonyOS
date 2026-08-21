@@ -8,6 +8,7 @@ Wifi Manager 的原生 HarmonyOS 移动客户端。客户端复用现有 Gateway
 - 登录、会话刷新和安全本地缓存
 - 账号注册、验证码发送和密码找回
 - 平台/租户工作区切换
+- 平台超级管理员组织、账号、删除审核和 SaaS 只读 Demo
 - 设备列表、设备详情
 - Session 列表、详情、注销和管理员撤销
 - 告警 REST 查询、处理和 WebSocket 实时通知
@@ -16,7 +17,9 @@ Wifi Manager 的原生 HarmonyOS 移动客户端。客户端复用现有 Gateway
 - 浅色/深色简约移动端主题
 
 契约映射、验收证据和冻结项见
-[`docs/H0-contract-audit.md`](docs/H0-contract-audit.md)。
+[`docs/H0-contract-audit.md`](docs/H0-contract-audit.md)、
+[`docs/HM1-implementation-audit.md`](docs/HM1-implementation-audit.md) 和
+[`docs/HM2-implementation-audit.md`](docs/HM2-implementation-audit.md)。
 
 ## 本地构建
 

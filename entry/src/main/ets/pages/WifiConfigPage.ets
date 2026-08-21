@@ -51,7 +51,7 @@ struct WifiConfigPage {
 
     const params = router.getParams() as WifiConfigParams | null
     this.nodeId = params?.nodeId?.trim() ?? ''
-    this.writable = snapshot.context?.writable ?? false
+    this.writable = snapshot.context?.authorities.includes('WIFI_CONFIG_SUBMIT') ?? false
     if (!/^[1-9]\d{0,18}$/.test(this.nodeId)) {
       this.loading = false
       this.errorMessage = '设备编号无效'
@@ -275,6 +275,17 @@ struct WifiConfigPage {
       : value.replace('T', ' ')
   }
 
+  private openTaskDetail(): void {
+    if (this.task === null) return
+    router.pushUrl({
+      url: 'pages/WifiConfigDetailPage',
+      params: {
+        deviceCode: this.task.deviceCode,
+        requestId: this.task.requestId
+      }
+    })
+  }
+
   build() {
     Column() {
       Row({ space: 12 }) {
@@ -457,6 +468,11 @@ struct WifiConfigPage {
                 if (this.task.failureMessage !== null && this.task.failureMessage.length > 0) {
                   this.taskRow('失败原因', this.task.failureMessage)
                 }
+                Button('查看任务详情')
+                  .height(42).fontSize(13).fontColor(AppTheme.primary)
+                  .backgroundColor(AppTheme.surfaceRaised)
+                  .border({ width: 1, color: AppTheme.border }).borderRadius(8)
+                  .onClick(() => this.openTaskDetail())
                 if (this.pollState === 'exhausted' ||
                   (!isWifiConfigTerminal(this.task.status) && this.pollState === 'idle')) {
                   Button('继续查询')

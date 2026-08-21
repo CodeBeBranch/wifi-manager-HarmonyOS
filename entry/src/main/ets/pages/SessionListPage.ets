@@ -13,6 +13,10 @@ interface SessionDetailParams {
   session: string
 }
 
+interface SessionListParams {
+  nodeId: string
+}
+
 @Component
 export struct SessionListContent {
   @Prop embedded: boolean = false
@@ -41,6 +45,9 @@ export struct SessionListContent {
       return
     }
     this.admin = snapshot.role === 0 || snapshot.role === 1
+    const params = router.getParams() as SessionListParams | null
+    this.nodeId = params?.nodeId ?? ''
+    this.appliedNodeId = this.nodeId
     this.load(1)
   }
 
@@ -383,9 +390,17 @@ export struct SessionListContent {
 @Entry
 @Component
 struct SessionListPage {
+  @State contentRevision: number = 0
+
+  onPageShow(): void {
+    this.contentRevision += 1
+  }
+
   build() {
     Column() {
-      SessionListContent({ embedded: false })
+      ForEach([this.contentRevision], (_revision: number) => {
+        SessionListContent({ embedded: false })
+      }, (revision: number): string => String(revision))
     }
     .width('100%')
     .height('100%')
