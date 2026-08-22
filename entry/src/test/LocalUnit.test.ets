@@ -8,6 +8,7 @@ import { ApiError } from '../main/ets/model/ApiModels'
 import {
   AlertEvent,
   AlertPageResult,
+  AlertQuery,
   alertReconnectDelay,
   parseAlertSocketMessage
 } from '../main/ets/model/AlertModels'
@@ -43,6 +44,11 @@ import {
 import { NetworkSession, SessionPageResult } from '../main/ets/model/SessionModels'
 import { PlatformTenantPageResult } from '../main/ets/model/TenantModels'
 import { TenantCreateInput } from '../main/ets/model/Hm2Models'
+import {
+  DemoHm4SecurityRepository,
+  RealHm4SecurityRepository
+} from '../main/ets/repository/Hm4SecurityRepository'
+import { DemoAlertEventSource } from '../main/ets/preview/DemoAlertEventSource'
 import { DemoTenantOpsRepository } from '../main/ets/repository/TenantOpsRepository'
 import { DemoTenantDataRepository } from '../main/ets/repository/DemoTenantDataRepository'
 import {
@@ -1529,6 +1535,85 @@ export default function localUnitTest() {
       expect(normalizeRuntimeMode('invalid')).assertEqual(RuntimeMode.REAL)
     })
 
+    it('keepsHm4SecurityDataTenantScopedAndReadOnlyAudits', 0, () => {
+      const repository = new DemoHm4SecurityRepository()
+      const tenantOne = repository.listAlerts('preview-tenant-01', {
+        current: 1, size: 20, level: '', status: '', mac: ''
+      })
+      const tenantTwo = repository.listAlerts('preview-tenant-02', {
+        current: 1, size: 20, level: '', status: '', mac: ''
+      })
+      expect(tenantOne.records[0].id === tenantTwo.records[0].id).assertFalse()
+      expect(repository.listAudits('preview-tenant-01', '').length > 0).assertTrue()
+      let missingAudit = 0
+      try {
+        repository.auditDetail('preview-tenant-02', tenantOne.records[0].id)
+      } catch (error) {
+        missingAudit = error instanceof ApiError ? error.httpStatus : 0
+      }
+      expect(missingAudit).assertEqual(404)
+    })
+
+    it('rejectsHm4UnauthorizedDuplicateStaleAndScenarioAlertHandling', 0, () => {
+      const repository = new DemoHm4SecurityRepository()
+      const alertId = repository.listAlerts('preview-tenant-01', {
+        current: 1, size: 20, level: '', status: '', mac: ''
+      }).records[0].id
+      let unauthorized = 0
+      try {
+        repository.handleAlert('preview-tenant-01', alertId, 'delegate', false, 0)
+      } catch (error) {
+        unauthorized = error instanceof ApiError ? error.httpStatus : 0
+      }
+      expect(unauthorized).assertEqual(403)
+      expect(repository.handleAlert('preview-tenant-01', alertId, 'tenantadmin', true, 0).version).assertEqual(1)
+      let duplicate = 0
+      try {
+        repository.handleAlert('preview-tenant-01', alertId, 'tenantadmin', true, 1)
+      } catch (error) {
+        duplicate = error instanceof ApiError ? error.httpStatus : 0
+      }
+      expect(duplicate).assertEqual(409)
+      repository.setScenario('CONFLICT')
+      let scenarioConflict = 0
+      try {
+        repository.handleAlert('preview-tenant-01', alertId, 'tenantadmin', true, 1)
+      } catch (error) {
+        scenarioConflict = error instanceof ApiError ? error.httpStatus : 0
+      }
+      expect(scenarioConflict).assertEqual(409)
+    })
+
+    it('preventsOlderHm4EventFromOverwritingHandledAlert', 0, () => {
+      const repository = new DemoHm4SecurityRepository()
+      const alertId = repository.listAlerts('preview-tenant-01', {
+        current: 1, size: 20, level: '', status: '', mac: ''
+      }).records[0].id
+      expect(repository.handleAlert('preview-tenant-01', alertId, 'tenantadmin', true, 0).version).assertEqual(1)
+      expect(repository.applyEvent('preview-tenant-01', alertId, 1)).assertFalse()
+      expect(repository.alertVersion('preview-tenant-01', alertId)).assertEqual(1)
+      expect(repository.applyEvent('preview-tenant-01', alertId, 2)).assertTrue()
+      expect(repository.alertVersion('preview-tenant-01', alertId)).assertEqual(2)
+    })
+
+    it('rebuildsHm4DemoEventSourceAndResetsScenarioDeterministically', 0, () => {
+      const repository = new DemoHm4SecurityRepository()
+      const source = new DemoAlertEventSource()
+      let firstEvents = 0
+      let secondEvents = 0
+      source.start('preview-tenant-01', 'NORMAL', repository, () => firstEvents += 1)
+      source.replay(repository)
+      expect(firstEvents).assertEqual(5)
+      source.start('preview-tenant-02', 'EMPTY', repository, () => secondEvents += 1)
+      source.replay(repository)
+      expect(secondEvents).assertEqual(5)
+      repository.setScenario('EMPTY')
+      expect(repository.listRules('preview-tenant-01', '').length).assertEqual(0)
+      repository.reset()
+      expect(repository.getScenario()).assertEqual('NORMAL')
+      expect(repository.listRules('preview-tenant-01', '').length > 0).assertTrue()
+    })
+
     it('restoresPreviewAuthoritiesFromFixedAccountDefinitions', 0, () => {
       const restored = new PreviewSession()
       expect(restored.restore({
@@ -1689,6 +1774,154 @@ export default function localUnitTest() {
       expect(mqtt.channel).assertEqual('MQTT')
       expect(networkTransportFactory.snapshot().mqtt).assertEqual(1)
       networkTransportFactory.resetCounters()
+    })
+
+    it('coversHm4RuleWriteLifecycleAndDelegateReadOnly', 0, () => {
+      const repository = new DemoHm4SecurityRepository()
+      const tenantId = 'preview-tenant-01'
+      const initial = repository.listRules(tenantId, '')
+      const created = repository.saveRule(tenantId, {
+        code: 'RULE-HM4-AUDIT',
+        name: 'HM4 Audit Rule',
+        level: 3,
+        condition: '测试规则条件'
+      }, null, true)
+      expect(repository.listRules(tenantId, '')[0].id).assertEqual(created.id)
+
+      const edited = repository.saveRule(tenantId, {
+        code: 'RULE-HM4-AUDIT',
+        name: 'HM4 Audit Rule Updated',
+        level: 2,
+        condition: '更新后的测试规则条件'
+      }, created.id, true)
+      expect(edited.name).assertEqual('HM4 Audit Rule Updated')
+      expect(repository.toggleRule(tenantId, created.id, true).enabled).assertFalse()
+      repository.deleteRule(tenantId, created.id, true)
+      expect(repository.listRules(tenantId, '').length).assertEqual(initial.length)
+
+      const beforeDelegate = repository.listRules(tenantId, '')
+      let delegateStatus = 0
+      try {
+        repository.saveRule(tenantId, {
+          code: 'RULE-DELEGATE-DENIED',
+          name: 'Delegate Denied',
+          level: 1,
+          condition: '平台代管只读'
+        }, null, false)
+      } catch (error) {
+        delegateStatus = error instanceof ApiError ? error.httpStatus : 0
+      }
+      expect(delegateStatus).assertEqual(403)
+      const afterDelegate = repository.listRules(tenantId, '')
+      expect(afterDelegate.length).assertEqual(beforeDelegate.length)
+      expect(afterDelegate[0].id).assertEqual(beforeDelegate[0].id)
+    })
+
+    it('coversHm4ScenarioMatrixAndDeterministicReset', 0, () => {
+      const repository = new DemoHm4SecurityRepository()
+      const tenantId = 'preview-tenant-01'
+      const query: AlertQuery = { current: 1, size: 20, level: '', status: '', mac: '' }
+
+      repository.setScenario('EMPTY')
+      expect(repository.listAlerts(tenantId, query).total).assertEqual(0)
+      expect(repository.listRules(tenantId, '').length).assertEqual(0)
+      expect(repository.listAudits(tenantId, '').length).assertEqual(0)
+
+      repository.setScenario('FILTER_EMPTY')
+      expect(repository.listAlerts(tenantId, query).total).assertEqual(0)
+      expect(repository.listRules(tenantId, 'RULE').length).assertEqual(0)
+      expect(repository.listAudits(tenantId, 'ALERT').length).assertEqual(0)
+
+      const unavailableScenarios: string[] = ['FORBIDDEN', 'RATE_LIMITED', 'DEPENDENCY_DOWN']
+      const unavailableStatuses: number[] = [403, 429, 503]
+      for (let index = 0; index < unavailableScenarios.length; index += 1) {
+        repository.setScenario(unavailableScenarios[index] as 'FORBIDDEN' | 'RATE_LIMITED' | 'DEPENDENCY_DOWN')
+        let status = 0
+        try {
+          repository.analytics(tenantId)
+        } catch (error) {
+          status = error instanceof ApiError ? error.httpStatus : 0
+        }
+        expect(status).assertEqual(unavailableStatuses[index])
+      }
+
+      repository.setScenario('CONFLICT')
+      let conflictStatus = 0
+      try {
+        repository.saveRule(tenantId, {
+          code: 'RULE-HM4-CONFLICT',
+          name: 'HM4 Conflict Rule',
+          level: 2,
+          condition: '冲突场景'
+        }, null, true)
+      } catch (error) {
+        conflictStatus = error instanceof ApiError ? error.httpStatus : 0
+      }
+      expect(conflictStatus).assertEqual(409)
+
+      repository.setScenario('PARTIAL_FAILURE')
+      let partialStatus = 0
+      let partialErrorKey = ''
+      try {
+        repository.analytics(tenantId)
+      } catch (error) {
+        partialStatus = error instanceof ApiError ? error.httpStatus : 0
+        partialErrorKey = error instanceof ApiError ? error.errorKey : ''
+      }
+      expect(partialStatus).assertEqual(502)
+      expect(partialErrorKey).assertEqual('PARTIAL_FAILURE')
+      expect(repository.listAlerts(tenantId, query).total).assertEqual(2)
+      expect(repository.listRules(tenantId, '').length).assertEqual(2)
+      expect(repository.listAudits(tenantId, '').length > 0).assertTrue()
+
+      repository.reset()
+      expect(repository.getScenario()).assertEqual('NORMAL')
+      expect(repository.listAlerts(tenantId, query).total).assertEqual(2)
+      expect(repository.listRules(tenantId, '').length).assertEqual(2)
+    })
+
+    it('keepsHm4DemoRepositoryAndEventSourceTransportFree', 0, () => {
+      runtimeModeStore.activateDemo()
+      runtimeModeStore.resetNetworkSentinel()
+      networkTransportFactory.resetCounters()
+      const repository = new DemoHm4SecurityRepository()
+      const source = new DemoAlertEventSource()
+      let eventCount = 0
+      source.start('preview-tenant-01', 'NORMAL', repository, () => eventCount += 1)
+      source.replay(repository)
+      repository.listAlerts('preview-tenant-01', {
+        current: 1, size: 20, level: '', status: '', mac: ''
+      })
+      repository.listRules('preview-tenant-01', '')
+      repository.listAudits('preview-tenant-01', '')
+      repository.analytics('preview-tenant-01')
+      expect(eventCount).assertEqual(5)
+      expect(runtimeModeStore.getBlockedNetworkAttempts()).assertEqual(0)
+      expect(networkTransportFactory.snapshot().http).assertEqual(0)
+      expect(networkTransportFactory.snapshot().webSocket).assertEqual(0)
+      expect(networkTransportFactory.snapshot().mqtt).assertEqual(0)
+      source.dispose()
+      runtimeModeStore.activateReal()
+    })
+
+    it('keepsHm4RealSelectionOutOfDemoFallback', 0, async () => {
+      runtimeModeStore.activateReal()
+      let factoryErrorKey = ''
+      try {
+        await repositoryFactory.hm4Security().listRules('')
+      } catch (error) {
+        factoryErrorKey = error instanceof ApiError ? error.errorKey : ''
+      }
+      expect(factoryErrorKey).assertEqual('REAL_API_PENDING')
+
+      let directErrorKey = ''
+      try {
+        await new RealHm4SecurityRepository().analytics()
+      } catch (error) {
+        directErrorKey = error instanceof ApiError ? error.errorKey : ''
+      }
+      expect(directErrorKey).assertEqual('REAL_API_PENDING')
+      runtimeModeStore.activateDemo()
     })
   })
 }

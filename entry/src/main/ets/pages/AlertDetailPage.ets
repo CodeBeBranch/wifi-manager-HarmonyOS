@@ -32,7 +32,7 @@ struct AlertDetailPage {
       resetToMain()
       return
     }
-    this.writable = snapshot.context?.writable ?? false
+    this.writable = snapshot.context?.authorities.includes('ALERT_HANDLE') ?? false
     const params = router.getParams() as AlertDetailParams | null
     const id = Number(params?.id ?? '0')
     if (!Number.isInteger(id) || id <= 0) {
@@ -75,7 +75,7 @@ struct AlertDetailPage {
     this.errorMessage = ''
     this.successMessage = ''
     try {
-      await repositoryFactory.alert().handle(this.alertId)
+      await repositoryFactory.alert().handle(this.alertId, this.alert.version ?? 0)
       await this.load()
       this.confirming = false
       this.successMessage = '告警已标记为已处理'

@@ -49,7 +49,10 @@ export struct TenantServiceContent {
           { title: '设备命令', description: '提交命令并跟踪 requestId 与执行状态', route: 'pages/DeviceListPage' },
           { title: '上游 WiFi', description: '查看配置任务和设备侧执行结果', route: 'pages/DeviceListPage' },
           { title: '黑名单', description: '查看、新增和移除当前组织的黑名单记录', route: 'pages/TenantBlacklistPage' },
-          { title: '告警中心', description: '查看当前组织告警和关联设备', route: 'pages/AlertListPage' }
+          { title: '告警中心', description: '查看当前组织告警和关联设备', route: 'pages/AlertListPage' },
+          { title: '告警规则', description: '查看规则；租户管理员可创建、编辑和启停', route: 'pages/TenantRuleListPage' },
+          { title: '安全审计', description: '只读查看安全操作记录和处理历史', route: 'pages/TenantAuditListPage' },
+          { title: '告警分析', description: '查看告警处理与规则摘要', route: 'pages/AlertAnalyticsPage' }
         ] as ServiceItem[], (item: ServiceItem) => {
           Row({ space: 12 }) {
             Column({ space: 4 }) {

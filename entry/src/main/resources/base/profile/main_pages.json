@@ -38,6 +38,11 @@
                 "pages/SessionListPage",
                 "pages/SessionDetailPage",
                 "pages/AlertListPage",
-                "pages/AlertDetailPage"
+                "pages/AlertDetailPage",
+                "pages/TenantRuleListPage",
+                "pages/TenantRuleEditorPage",
+                "pages/TenantAuditListPage",
+                "pages/TenantAuditDetailPage",
+                "pages/AlertAnalyticsPage"
             ]
 }

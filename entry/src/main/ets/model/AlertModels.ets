@@ -10,6 +10,7 @@ export interface AlertEvent {
   handleUserId: number | null
   handleTime: string | null
   createTime: string | null
+  version?: number
 }
 
 export interface AlertPageResult {

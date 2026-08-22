@@ -31,6 +31,7 @@ export struct AlertListContent {
   @State socketState: AlertSocketState = 'idle'
   @State socketAttempt: number = 0
   @State liveAlertMessage: string = ''
+  @State demoLiveState: string = ''
   private appliedLevel: string = ''
   private appliedStatus: string = ''
   private appliedMac: string = ''
@@ -46,7 +47,12 @@ export struct AlertListContent {
       return
     }
     this.load(1)
-    if (!sessionStore.isPreviewMode()) {
+    if (sessionStore.isPreviewMode()) {
+      repositoryFactory.startDemoAlertEvents((connection) => {
+        this.demoLiveState = connection.state
+        this.liveAlertMessage = `本地实时状态：${connection.state}（版本 ${connection.version}）`
+      })
+    } else {
       alertSocketClient.start(
         (state: AlertSocketState, attempt: number): void => {
           this.socketState = state
@@ -60,7 +66,11 @@ export struct AlertListContent {
   }
 
   aboutToDisappear(): void {
-    alertSocketClient.stop()
+    if (sessionStore.isPreviewMode()) {
+      repositoryFactory.stopDemoAlertEvents()
+    } else {
+      alertSocketClient.stop()
+    }
   }
 
   private async load(page: number): Promise<void> {
@@ -149,6 +159,10 @@ export struct AlertListContent {
   }
 
   private socketLabel(): string {
+    if (sessionStore.isPreviewMode()) {
+      if (this.demoLiveState.length === 0) return '本地实时告警初始化中'
+      return `本地实时告警${this.demoLiveState}`
+    }
     if (this.socketState === 'connected') return '实时告警已连接'
     if (this.socketState === 'connecting') return '正在连接实时告警'
     if (this.socketState === 'reconnecting') {
@@ -194,19 +208,26 @@ export struct AlertListContent {
         Circle()
           .width(8)
           .height(8)
-          .fill(this.socketState === 'connected' ? AppTheme.successText : AppTheme.warningText)
+          .fill((sessionStore.isPreviewMode() && this.demoLiveState === 'online') ||
+            this.socketState === 'connected' ? AppTheme.successText : AppTheme.warningText)
         Text(this.socketLabel())
           .fontSize(12)
           .fontColor(AppTheme.muted)
           .layoutWeight(1)
           .maxLines(1)
-        if (this.socketState === 'disconnected' || this.socketState === 'auth-required') {
+        if (sessionStore.isPreviewMode() || this.socketState === 'disconnected' || this.socketState === 'auth-required') {
           Button('重连')
             .height(36)
             .fontSize(12)
             .fontColor(AppTheme.primary)
             .backgroundColor(Color.Transparent)
-            .onClick(() => alertSocketClient.retry())
+            .onClick(() => {
+              if (sessionStore.isPreviewMode()) {
+                repositoryFactory.replayDemoAlertEvents()
+              } else {
+                alertSocketClient.retry()
+              }
+            })
         }
       }
       .width('100%')

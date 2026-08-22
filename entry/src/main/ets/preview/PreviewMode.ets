@@ -130,6 +130,7 @@ function createTenantContext(role: number): TenantContext {
         'ALERT_HANDLE',
         'COMMAND_SUBMIT',
         'WIFI_CONFIG_SUBMIT',
+        'RULE_WRITE',
         'BLACKLIST_WRITE'
       ]
       : [

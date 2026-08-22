@@ -5,7 +5,8 @@ param(
   [string]$AbilityName = 'EntryAbility',
   [string]$HdcPath = 'D:\devEcoStudio\DevEcoStudio\sdk\default\openharmony\toolchains\hdc.exe',
   [switch]$AccountRefreshOnly,
-  [switch]$Hm3Only
+  [switch]$Hm3Only,
+  [switch]$Hm4Only
 )
 
 $ErrorActionPreference = 'Stop'
@@ -1285,6 +1286,233 @@ function Assert-Hm3SuperAdminJourney {
   Write-Check 'HM-3 super administrator managed-tenant journey completed'
 }
 
+function Open-Hm4Service {
+  param(
+    [Parameter(Mandatory = $true)][string]$Title,
+    [Parameter(Mandatory = $true)][string]$ExpectedText
+  )
+
+  $current = Get-Layout
+  $atServiceRoot = (Get-PagePath -Layout $current) -eq 'pages/MainPage' -and
+    ((Test-Text -Layout $current -Text '设备管理') -or
+      (Test-Text -Layout $current -Text '告警中心') -or
+      (Test-Text -Layout $current -Text '告警规则'))
+  if (-not $atServiceRoot) {
+    Click-Text -Text '服务' -Area Bottom
+    Wait-AnyText -Texts @('设备管理', '告警中心', '租户运维') | Out-Null
+  }
+  Reveal-Text -Text $Title | Out-Null
+  Click-Text -Text $Title
+  return Wait-Text -Text $ExpectedText
+}
+
+function Get-PagePath {
+  param(
+    [Parameter(Mandatory = $true)]$Layout
+  )
+
+  $path = [string]$Layout.attributes.pagePath
+  if ($path.Length -gt 0) {
+    return $path
+  }
+  foreach ($child in @($Layout.children)) {
+    $path = [string]$child.attributes.pagePath
+    if ($path.Length -gt 0) {
+      return $path
+    }
+  }
+  return ''
+}
+
+function Back-UntilPagePath {
+  param(
+    [Parameter(Mandatory = $true)][string]$PagePath,
+    [int]$MaxBacks = 4
+  )
+
+  for ($attempt = 0; $attempt -le $MaxBacks; $attempt += 1) {
+    $layout = Get-Layout
+    if ((Get-PagePath -Layout $layout) -eq $PagePath) {
+      return $layout
+    }
+    if ($attempt -lt $MaxBacks) {
+      Press-Back
+    }
+  }
+  throw "Unable to return to page path after $MaxBacks back actions: $PagePath"
+}
+
+function Wait-Hm4RuleSaveResult {
+  param(
+    [Parameter(Mandatory = $true)][string]$RuleName,
+    [int]$TimeoutSeconds = 8
+  )
+
+  $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+  do {
+    $layout = Get-Layout
+    $pagePath = Get-PagePath -Layout $layout
+    if ($pagePath -eq 'pages/TenantRuleListPage') {
+      return $layout
+    }
+    if ($pagePath -eq 'pages/TenantRuleEditorPage') {
+      foreach ($errorText in @('规则编码或名称不符合要求', '规则编码已存在', '规则保存失败')) {
+        if (Test-Text -Layout $layout -Text $errorText) {
+          throw "P231 rule save remained on editor with error: $errorText"
+        }
+      }
+    } elseif ($pagePath.Length -gt 0) {
+      throw "P231 rule save navigated unexpectedly: $pagePath"
+    }
+    Start-Sleep -Milliseconds 300
+  } while ((Get-Date) -lt $deadline)
+  throw "Timed out waiting for P231 rule save result for $RuleName"
+}
+
+function Assert-Hm4TenantAdminJourney {
+  Assert-BottomTabs -Expected @('首页', '设备', '告警', '服务', '我的')
+  Reset-Hm2DemoState
+
+  $alerts = Open-Hm4Service -Title '告警中心' -ExpectedText '告警'
+  Assert-VisibleMarkers -Layout $alerts -Markers @(
+    '检测到异常接入点',
+    '设备流量异常升高',
+    '本地实时告警online'
+  ) -Scope 'P208 tenant alert list and deterministic Demo event source'
+  Write-Check 'P208 tenant alert list and Demo event source online'
+
+  Click-Text -Text '检测到异常接入点'
+  $alertDetail = Wait-Text -Text '告警详情'
+  Assert-VisibleMarkers -Layout $alertDetail -Markers @(
+    '告警信息',
+    '标记为已处理'
+  ) -Scope 'P209 tenant alert detail'
+  Click-Text -Text '标记为已处理'
+  Wait-Text -Text '确认' | Out-Null
+  Click-Text -Text '确认'
+  $handled = Wait-Text -Text '告警已标记为已处理'
+  if (-not (Test-Text -Layout $handled -Text '已处理')) {
+    throw 'Handled alert did not retain its handled status.'
+  }
+  Write-Check 'P209 ALERT_HANDLE confirmation updates local Demo state'
+  Press-Back
+  $handledList = Wait-Text -Text '检测到异常接入点'
+  if (-not (Test-Text -Layout $handledList -Text '已处理')) {
+    throw 'A Demo replay overwrote the newer handled alert state.'
+  }
+  Write-Check 'Demo event replay preserves the newer handled alert state'
+  Back-UntilPagePath -PagePath 'pages/MainPage' | Out-Null
+
+  $rules = Open-Hm4Service -Title '告警规则' -ExpectedText '告警规则'
+  Assert-VisibleMarkers -Layout $rules -Markers @(
+    '异常接入点识别',
+    '流量峰值预警'
+  ) -Scope 'P210 tenant rule list'
+  Click-TopRightButton
+  Wait-Text -Text '新建规则' | Out-Null
+  Input-TextAtPlaceholder -Placeholder '规则编码，例如 RULE-ACCESS' -Value 'RULE-HM4-AUDIT'
+  Input-TextAtPlaceholder -Placeholder '规则名称' -Value 'HM4 Audit Rule'
+  Input-TextAtPlaceholder -Placeholder '触发条件' -Value 'HM4 audit condition'
+  Press-Back
+  Click-Text -Text '确认保存'
+  Wait-Hm4RuleSaveResult -RuleName 'HM4 Audit Rule' | Out-Null
+  Wait-Text -Text 'HM4 Audit Rule' | Out-Null
+  Write-Check 'P231 tenant administrator RULE_WRITE creates a rule'
+  Back-UntilPagePath -PagePath 'pages/MainPage' | Out-Null
+
+  $audits = Open-Hm4Service -Title '安全审计' -ExpectedText '安全审计'
+  Assert-VisibleMarkers -Layout $audits -Markers @(
+    'ALERT_HANDLE',
+    'RULE_UPDATE'
+  ) -Scope 'P212 tenant audit list'
+  Click-Text -Text 'ALERT_HANDLE'
+  $auditDetail = Wait-Text -Text '审计详情'
+  Assert-VisibleMarkers -Layout $auditDetail -Markers @(
+    '操作对象',
+    '操作人',
+    '发生时间',
+    '详情'
+  ) -Scope 'P232 tenant audit detail'
+  Write-Check 'P212/P232 read-only tenant audit list and detail'
+  Back-UntilPagePath -PagePath 'pages/MainPage' | Out-Null
+
+  $analytics = Open-Hm4Service -Title '告警分析' -ExpectedText '告警分析'
+  Assert-VisibleMarkers -Layout $analytics -Markers @(
+    '告警总数',
+    '待处理',
+    '已处理',
+    '高等级告警',
+    '重点规则'
+  ) -Scope 'P245 tenant alert analytics'
+  Write-Check 'P245 tenant alert analytics'
+  Back-UntilPagePath -PagePath 'pages/MainPage' | Out-Null
+
+  Reset-Hm2DemoState
+  $resetRules = Open-Hm4Service -Title '告警规则' -ExpectedText '告警规则'
+  if (Test-Text -Layout $resetRules -Text 'HM4 Audit Rule') {
+    throw 'Demo scenario reset did not remove HM-4 rule state.'
+  }
+  Assert-VisibleMarkers -Layout $resetRules -Markers @(
+    '异常接入点识别',
+    '流量峰值预警'
+  ) -Scope 'HM-4 scenario reset'
+  Write-Check 'HM-4 scenario reset resets local security data without clearing app data'
+  Back-UntilPagePath -PagePath 'pages/MainPage' | Out-Null
+  Assert-NetworkSentinel
+  Write-Check 'HM-4 tenant administrator journey completed with zero Demo network attempts'
+}
+
+function Assert-Hm4PlatformDelegateJourney {
+  Assert-BottomTabs -Expected @('首页', '组织', '账号', '服务', '我的')
+  Reset-Hm2DemoState
+
+  Enter-Hm3ManagedTenant -TenantName '边缘网络实验室'
+  $tenantOneAlerts = Open-Hm4Service -Title '告警中心' -ExpectedText '告警'
+  if (-not (Test-Text -Layout $tenantOneAlerts -Text '70:66:55:01:01:01') -or
+    (Test-Text -Layout $tenantOneAlerts -Text '70:66:55:02:01:01')) {
+    throw 'Platform delegate tenant 01 alert data is not isolated.'
+  }
+  Write-Check 'platform delegate tenant 01 alert data is isolated'
+  Back-UntilPagePath -PagePath 'pages/MainPage' | Out-Null
+
+  $delegateRules = Open-Hm4Service -Title '告警规则' -ExpectedText '告警规则'
+  foreach ($writeAction in @('+', '编辑', '停用', '删除')) {
+    if (Test-Text -Layout $delegateRules -Text $writeAction) {
+      throw "Platform delegate unexpectedly received RULE_WRITE action: $writeAction"
+    }
+  }
+  Write-Check 'platform delegate rules are read-only'
+  Back-UntilPagePath -PagePath 'pages/MainPage' | Out-Null
+
+  $delegateAudits = Open-Hm4Service -Title '安全审计' -ExpectedText '安全审计'
+  if (Test-Text -Layout $delegateAudits -Text '确认保存') {
+    throw 'Platform delegate audit page exposed a write action.'
+  }
+  Write-Check 'platform delegate audits are read-only'
+  Back-UntilPagePath -PagePath 'pages/MainPage' | Out-Null
+
+  $delegateAnalytics = Open-Hm4Service -Title '告警分析' -ExpectedText '告警分析'
+  Assert-VisibleMarkers -Layout $delegateAnalytics -Markers @(
+    '告警总数',
+    '重点规则'
+  ) -Scope 'platform delegate analytics'
+  Write-Check 'platform delegate analytics are read-only'
+  Back-UntilPagePath -PagePath 'pages/MainPage' | Out-Null
+  Return-Hm3Platform
+
+  Enter-Hm3ManagedTenant -TenantName '分部办公网络'
+  $tenantTwoAlerts = Open-Hm4Service -Title '告警中心' -ExpectedText '告警'
+  if (-not (Test-Text -Layout $tenantTwoAlerts -Text '70:66:55:02:01:01') -or
+    (Test-Text -Layout $tenantTwoAlerts -Text '70:66:55:01:01:01')) {
+    throw 'Platform delegate tenant 02 alert data leaked from tenant 01.'
+  }
+  Write-Check 'platform delegate tenant 02 alert data is isolated'
+  Back-UntilPagePath -PagePath 'pages/MainPage' | Out-Null
+  Return-Hm3Platform
+  Assert-NetworkSentinel
+  Write-Check 'HM-4 platform delegate journey completed'
+}
+
 try {
   if (-not (Test-Path -LiteralPath $HdcPath -PathType Leaf)) {
     throw "hdc not found: $HdcPath"
@@ -1304,11 +1532,28 @@ try {
   Return-To-Login
   Write-Check 'cold start is at login without clearing app data'
 
-  if ($Hm3Only -and $AccountRefreshOnly) {
-    throw 'Hm3Only and AccountRefreshOnly cannot be used together.'
+  $exclusiveModes = 0
+  foreach ($mode in @($Hm3Only, $Hm4Only, $AccountRefreshOnly)) {
+    if ($mode) {
+      $exclusiveModes += 1
+    }
+  }
+  if ($exclusiveModes -gt 1) {
+    throw 'Hm3Only, Hm4Only, and AccountRefreshOnly are mutually exclusive.'
   }
 
-  if ($Hm3Only) {
+  if ($Hm4Only) {
+    Login-PreviewAccount -Account 'tenantadmin'
+    Assert-Hm4TenantAdminJourney
+    Logout-CurrentAccount
+
+    Stop-App
+    Start-App
+    Wait-Text -Text 'superadmin' | Out-Null
+    Login-PreviewAccount -Account 'superadmin'
+    Assert-Hm4PlatformDelegateJourney
+    Logout-CurrentAccount
+  } elseif ($Hm3Only) {
     Login-PreviewAccount -Account 'tenantadmin'
     Assert-Hm3TenantAdminJourney
     Logout-CurrentAccount
@@ -1397,7 +1642,9 @@ try {
   }
   Write-Check "PID $appPid has no app-authored ERROR/FATAL or crash signature ($($errorLines.Count) framework lines observed)"
 
-  if ($Hm3Only) {
+  if ($Hm4Only) {
+    Write-Host "HM-4 DEVICE AUDIT PASSED: $script:checks checks"
+  } elseif ($Hm3Only) {
     Write-Host "HM-3 DEVICE AUDIT PASSED: $script:checks checks"
   } else {
     Write-Host "HM-2 DEVICE AUDIT PASSED: $script:checks checks"
