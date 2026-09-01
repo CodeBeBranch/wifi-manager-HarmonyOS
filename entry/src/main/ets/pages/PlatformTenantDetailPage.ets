@@ -162,6 +162,10 @@ struct PlatformTenantDetailPage {
     })
   }
 
+  private openEntitlement(): void {
+    router.pushUrl({ url: 'pages/PlatformAccountEntitlementPage' })
+  }
+
   build() {
     Column() {
       Row({ space: 12 }) {
@@ -289,6 +293,12 @@ struct PlatformTenantDetailPage {
                   '成员列表',
                   `${this.tenant?.memberCount ?? 0} 位成员 · 平台只读`,
                   (): void => this.openMembers()
+                )
+                Divider().color(AppTheme.border)
+                this.linkRow(
+                  '账号权益',
+                  '查看、调整组织权益并创建奖励订单',
+                  (): void => this.openEntitlement()
                 )
                 Divider().color(AppTheme.border)
                 this.statusLinkRow()

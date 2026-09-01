@@ -129,6 +129,10 @@ export struct MemberServiceContent {
           { title: '退款', description: '申请退款并查看处理进度', route: 'pages/MemberRefundListPage' },
           { title: '使用流水', description: '查看本人流量和连接使用记录', route: 'pages/MemberUsageHistoryPage' },
           { title: '位置隐私', description: '授权、撤销和清除位置历史', route: 'pages/MemberLocationPrivacyPage' },
+          { title: 'Marketplace', description: '浏览商品并查看履约订单', route: 'pages/MemberMarketplaceProductListPage' },
+          { title: '公告', description: '阅读公告并参与评论', route: 'pages/MemberAnnouncementListPage' },
+          { title: 'Support 工单', description: '创建工单并跟踪回复', route: 'pages/MemberSupportListPage' },
+          { title: '消息', description: '查看服务消息并安全跳转', route: 'pages/MemberMessageListPage' },
           { title: '个人资料', description: '查看并维护本人资料', route: 'pages/ProfilePage' },
           { title: '社交身份', description: '查看第三方身份绑定状态', route: 'pages/SocialIdentitiesPage' }
         ] as MemberShortcut[], (item: MemberShortcut) => {

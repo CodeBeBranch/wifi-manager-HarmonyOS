@@ -56,7 +56,12 @@ export struct TenantServiceContent {
           { title: '退款审核', description: '查看并处理当前组织的成员退款申请', route: 'pages/TenantRefundListPage' },
           { title: '位置管理', description: '筛选组织位置并查看轨迹、停留点、热力和节点覆盖', route: 'pages/TenantLocationListPage' },
           { title: '电子围栏', description: '查看围栏、事件；租户管理员可编辑、启停和删除', route: 'pages/TenantGeofenceListPage' },
-          { title: '网络分析', description: '查看组织信号质量和流量趋势', route: 'pages/TenantAnalyticsPage' }
+          { title: '网络分析', description: '查看组织信号质量和流量趋势', route: 'pages/TenantAnalyticsPage' },
+          { title: '组织与成员', description: '维护组织资料、成员邀请和所有权转移', route: 'pages/TenantOrganizationPage' },
+          { title: '订阅与配额', description: '查看当前套餐、使用量和限制', route: 'pages/TenantSubscriptionPage' },
+          { title: 'Marketplace', description: '浏览商品并跟踪组织订单与履约', route: 'pages/TenantMarketplaceProductListPage' },
+          { title: '组织公告', description: '发布、撤回和治理成员评论', route: 'pages/TenantAnnouncementListPage' },
+          { title: 'Support 工单', description: '创建、回复、分派和解决组织工单', route: 'pages/TenantSupportListPage' }
         ] as ServiceItem[], (item: ServiceItem) => {
           Row({ space: 12 }) {
             Column({ space: 4 }) {

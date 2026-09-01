@@ -9,6 +9,12 @@ import {
 import { platformAdminRepositoryFactory } from '../repository/PlatformAdminRepository'
 import { AppTheme } from '../ui/AppTheme'
 
+interface PlatformHm7ServiceItem {
+  title: string
+  description: string
+  route: string
+}
+
 @Component
 export struct PlatformHomeContent {
   @Link selectedTab: number
@@ -495,6 +501,58 @@ export struct PlatformServiceContent {
         .backgroundColor(AppTheme.surface)
         .border({ width: 1, color: AppTheme.border })
         .borderRadius(8)
+
+        ForEach([
+          {
+            title: '订阅与配额',
+            description: '查询组织订阅、续期、停用和配额',
+            route: 'pages/PlatformSubscriptionListPage'
+          },
+          {
+            title: 'Marketplace',
+            description: '管理商品、SKU、订单和履约异常',
+            route: 'pages/PlatformMarketplaceProductListPage'
+          },
+          {
+            title: '公告治理',
+            description: '发布、撤回和审核平台公告',
+            route: 'pages/PlatformAnnouncementListPage'
+          },
+          {
+            title: 'AI 人工复核',
+            description: '审核模型建议并通过、驳回或转人工',
+            route: 'pages/PlatformAiReviewListPage'
+          },
+          {
+            title: 'Support 工单',
+            description: '审核、回复和分派跨组织工单',
+            route: 'pages/PlatformSupportListPage'
+          },
+          {
+            title: '平台运行',
+            description: '查看健康摘要并人工恢复异常任务',
+            route: 'pages/PlatformRuntimePage'
+          },
+          {
+            title: '平台审计',
+            description: '只读查询平台计划能力操作记录',
+            route: 'pages/PlatformAuditListPage'
+          }
+        ] as PlatformHm7ServiceItem[], (item: PlatformHm7ServiceItem) => {
+          Row({ space: 12 }) {
+            Column({ space: 4 }) {
+              Text(item.title).fontSize(16).fontWeight(FontWeight.Medium)
+                .fontColor(AppTheme.text)
+              Text(item.description).fontSize(12).fontColor(AppTheme.muted)
+                .maxLines(2).textOverflow({ overflow: TextOverflow.Ellipsis })
+            }.alignItems(HorizontalAlign.Start).layoutWeight(1)
+            Text('›').fontSize(21).fontColor(AppTheme.muted)
+          }
+          .width('100%').height(72).padding({ left: 14, right: 12 })
+          .backgroundColor(AppTheme.surface).border({ width: 1, color: AppTheme.border })
+          .borderRadius(8).margin({ top: 10 })
+          .onClick(() => router.pushUrl({ url: item.route }))
+        }, (item: PlatformHm7ServiceItem): string => item.route)
 
         Text('已发布套餐')
           .fontSize(17)

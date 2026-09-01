@@ -62,6 +62,11 @@ import { sessionStore } from '../session/SessionStore'
 import { DemoHm4SecurityRepository, RealHm4SecurityRepository } from './Hm4SecurityRepository'
 import { DemoHm5MemberRepository, RealHm5MemberRepository } from './Hm5MemberRepository'
 import { DemoHm6LocationRepository, RealHm6LocationRepository } from './Hm6LocationRepository'
+import {
+  DemoHm7CapabilityRepository,
+  Hm7CapabilityRepositoryContract,
+  RealHm7CapabilityRepository
+} from './Hm7CapabilityRepository'
 
 export interface AlertRepositoryContract {
   list(query: AlertQuery): Promise<AlertPageResult>
@@ -625,6 +630,7 @@ class RepositoryFactory {
   private readonly demoHm4 = new DemoHm4SecurityRepository()
   private readonly demoHm5 = new DemoHm5MemberRepository()
   private readonly demoHm6 = new DemoHm6LocationRepository()
+  private readonly demoHm7 = new DemoHm7CapabilityRepository()
   private readonly demoAlert = new DemoAlertRepository(this.demoHm4)
   private readonly demoHm4Security = new DemoHm4SecurityAdapter(this.demoHm4)
   private readonly realHm4Security = new RealHm4SecurityAdapter()
@@ -632,6 +638,7 @@ class RepositoryFactory {
   private readonly realHm5Member = new RealHm5MemberAdapter()
   private readonly demoHm6Location = new DemoHm6LocationAdapter(this.demoHm6)
   private readonly realHm6Location = new RealHm6LocationAdapter()
+  private readonly realHm7 = new RealHm7CapabilityRepository()
   private readonly demoAlertEvents = new DemoAlertEventSource()
   private readonly demoDevice = new DemoDeviceRepository(this.demoTenantData)
   private readonly realDevice = new RealDeviceRepositoryAdapter()
@@ -662,6 +669,10 @@ class RepositoryFactory {
 
   hm6Location(): Hm6LocationRepositoryContract {
     return runtimeModeStore.isDemo() ? this.demoHm6Location : this.realHm6Location
+  }
+
+  hm7Capability(): Hm7CapabilityRepositoryContract {
+    return runtimeModeStore.isDemo() ? this.demoHm7 : this.realHm7
   }
 
   startDemoAlertEvents(listener: DemoAlertListener): void {
@@ -715,6 +726,7 @@ class RepositoryFactory {
     this.demoHm4.setScenario(scenario as Hm4DemoScenario)
     this.demoHm5.setScenario(scenario)
     this.demoHm6.setScenario(scenario)
+    this.demoHm7.setScenario(scenario)
     this.demoAlertEvents.dispose()
   }
 
@@ -724,6 +736,7 @@ class RepositoryFactory {
     this.demoHm4.reset()
     this.demoHm5.reset()
     this.demoHm6.reset()
+    this.demoHm7.reset()
     this.demoAlertEvents.dispose()
   }
 }

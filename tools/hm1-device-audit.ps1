@@ -8,7 +8,8 @@ param(
   [switch]$Hm3Only,
   [switch]$Hm4Only,
   [switch]$Hm5Only,
-  [switch]$Hm6Only
+  [switch]$Hm6Only,
+  [switch]$Hm7Only
 )
 
 $ErrorActionPreference = 'Stop'
@@ -1858,6 +1859,199 @@ function Assert-Hm6PlatformDelegateJourney {
   Write-Check 'HM-6 platform delegate journey completed with zero Demo network attempts'
 }
 
+function Open-Hm7Service {
+  param(
+    [Parameter(Mandatory = $true)][string]$Title,
+    [Parameter(Mandatory = $true)][string]$ExpectedText
+  )
+
+  Click-Text -Text '服务' -Area Bottom
+  Reveal-Text -Text $Title | Out-Null
+  Click-Text -Text $Title
+  return Wait-Text -Text $ExpectedText
+}
+
+function Assert-Hm7PlatformJourney {
+  Assert-BottomTabs -Expected @('首页', '组织', '账号', '服务', '我的')
+  Reset-Hm2DemoState
+
+  $marketplace = Open-Hm7Service -Title 'Marketplace' -ExpectedText 'Marketplace 商品'
+  Assert-VisibleMarkers -Layout $marketplace -Markers @(
+    '访客网络增强包',
+    'SKU-MKT-001 · 华东履约',
+    '销售中'
+  ) -Scope 'P113 platform marketplace products'
+  Click-Text -Text '访客网络增强包'
+  $product = Wait-Text -Text '商品详情'
+  Assert-VisibleMarkers -Layout $product -Markers @(
+    '访客 Portal、短信额度和访问分析',
+    '¥699 / 月',
+    '上架',
+    '下架'
+  ) -Scope 'P124 platform marketplace product detail'
+  Write-Check 'P113/P124 platform marketplace list and product detail are reachable'
+  Back-UntilPagePath -PagePath 'pages/MainPage' | Out-Null
+
+  $reviews = Open-Hm7Service -Title 'AI 人工复核' -ExpectedText 'AI 人工复核'
+  Assert-VisibleMarkers -Layout $reviews -Markers @(
+    '异常漫游行为复核',
+    'AI-REV-001 · 置信度 82%',
+    '人工复核'
+  ) -Scope 'P117 platform AI review queue'
+  Click-Text -Text '异常漫游行为复核'
+  Wait-Text -Text '复核详情' | Out-Null
+  Click-Text -Text '通过复核'
+  Wait-Text -Text '确认通过复核？' | Out-Null
+  Click-Text -Text '确认'
+  Wait-Text -Text '生效中' | Out-Null
+  Write-Check 'P133 AI review action requires confirmation and updates local state'
+  Back-UntilPagePath -PagePath 'pages/MainPage' | Out-Null
+
+  $runtime = Open-Hm7Service -Title '平台运行' -ExpectedText '运行状态'
+  Assert-VisibleMarkers -Layout $runtime -Markers @(
+    '设备状态同步任务',
+    'JOB-DEVICE-SYNC-8821',
+    '失败'
+  ) -Scope 'P119 platform runtime summary'
+  Click-Text -Text '设备状态同步任务'
+  Wait-Text -Text '任务详情' | Out-Null
+  Click-Text -Text '人工恢复'
+  Wait-Text -Text '确认人工恢复？' | Out-Null
+  Click-Text -Text '确认'
+  Wait-Text -Text '已恢复' | Out-Null
+  Write-Check 'P130 runtime recovery requires confirmation and records recovered state'
+  Back-UntilPagePath -PagePath 'pages/MainPage' | Out-Null
+
+  $audits = Open-Hm7Service -Title '平台审计' -ExpectedText '平台审计'
+  Click-Text -Text '人工恢复异常任务'
+  $auditDetail = Wait-Text -Text '审计详情'
+  Assert-VisibleMarkers -Layout $auditDetail -Markers @(
+    '此页面为只读记录',
+    'AUD-7001'
+  ) -Scope 'P120/P131 read-only platform audit'
+  Write-Check 'P120/P131 platform audit remains read-only'
+  Back-UntilPagePath -PagePath 'pages/MainPage' | Out-Null
+  Assert-NetworkSentinel
+  Write-Check 'HM-7 platform journey completed with zero Demo network attempts'
+}
+
+function Assert-Hm7TenantJourney {
+  Assert-BottomTabs -Expected @('首页', '设备', '告警', '服务', '我的')
+  Reset-Hm2DemoState
+
+  $organization = Open-Hm7Service -Title '组织与成员' -ExpectedText '组织资料'
+  Assert-VisibleMarkers -Layout $organization -Markers @(
+    '分部办公网络',
+    '成员管理'
+  ) -Scope 'P213 tenant organization'
+  Click-Text -Text '成员管理'
+  $members = Wait-Text -Text '组织成员'
+  Assert-VisibleMarkers -Layout $members -Markers @(
+    '陈晓',
+    '林悦',
+    '邀请管理'
+  ) -Scope 'P214 tenant members'
+  Click-Text -Text '邀请管理'
+  Wait-Text -Text '成员邀请' | Out-Null
+  Write-Check 'P213/P214/P215 tenant organization, members, and invitations are linked'
+  Back-UntilPagePath -PagePath 'pages/MainPage' | Out-Null
+
+  $subscription = Open-Hm7Service -Title '订阅与配额' -ExpectedText '当前订阅'
+  Assert-VisibleMarkers -Layout $subscription -Markers @(
+    '当前专业版',
+    '设备配额',
+    '查看配额'
+  ) -Scope 'P217 tenant subscription'
+  Click-Text -Text '查看配额'
+  Wait-Text -Text '配额与用量' | Out-Null
+  Write-Check 'P217/P218 tenant subscription links to quota and usage'
+  Back-UntilPagePath -PagePath 'pages/MainPage' | Out-Null
+
+  Open-Hm7Service -Title '组织公告' -ExpectedText '组织公告' | Out-Null
+  Click-TopRightButton
+  Wait-Text -Text '公告编辑' | Out-Null
+  Input-TextAtPlaceholder -Placeholder '输入标题' -Value 'HM7 Tenant Notice'
+  Input-TextAtPlaceholder -Placeholder '输入摘要或编码' -Value 'Tenant HM7 demo notice'
+  Input-TextAtPlaceholder -Placeholder '输入详细内容' -Value 'HM7 tenant announcement body'
+  Press-Back
+  Click-Text -Text '保存'
+  Wait-Text -Text 'HM7 Tenant Notice' | Out-Null
+  Write-Check 'P221/P239 tenant administrator creates an announcement and list refreshes'
+  Back-UntilPagePath -PagePath 'pages/MainPage' | Out-Null
+
+  $support = Open-Hm7Service -Title 'Support 工单' -ExpectedText 'Support 工单'
+  Assert-VisibleMarkers -Layout $support -Markers @(
+    '会议区信号不稳定',
+    'SUP-20260901-001 · 网络问题'
+  ) -Scope 'P222 tenant support list'
+  Click-Text -Text '会议区信号不稳定'
+  Wait-Text -Text '工单详情' | Out-Null
+  Click-Text -Text '回复并分派'
+  Wait-Text -Text '确认回复并分派？' | Out-Null
+  Click-Text -Text '确认'
+  Wait-Text -Text 'ASSIGNED' | Out-Null
+  Write-Check 'P241 tenant support action requires confirmation'
+  Back-UntilPagePath -PagePath 'pages/MainPage' | Out-Null
+
+  Reset-Hm2DemoState
+  $resetAnnouncements = Open-Hm7Service -Title '组织公告' -ExpectedText '组织公告'
+  if (Test-Text -Layout $resetAnnouncements -Text 'HM7 Tenant Notice') {
+    throw 'Demo reset did not remove the HM-7 tenant announcement mutation.'
+  }
+  Write-Check 'HM-7 reset restores deterministic tenant plan data'
+  Back-UntilPagePath -PagePath 'pages/MainPage' | Out-Null
+  Assert-NetworkSentinel
+  Write-Check 'HM-7 tenant journey completed with zero Demo network attempts'
+}
+
+function Assert-Hm7MemberJourney {
+  Assert-BottomTabs -Expected @('首页', '连接', '服务', '我的')
+  Reset-Hm2DemoState
+
+  $marketplace = Open-Hm7Service -Title 'Marketplace' -ExpectedText 'Marketplace 商品'
+  Assert-VisibleMarkers -Layout $marketplace -Markers @(
+    '访客网络增强包',
+    '价格 · ¥699 / 月',
+    '查看订单'
+  ) -Scope 'P310 member marketplace'
+  Click-Text -Text '访客网络增强包'
+  Wait-Text -Text '商品详情' | Out-Null
+  Click-Text -Text '购买'
+  Wait-Text -Text '确认购买？' | Out-Null
+  Click-Text -Text '确认'
+  Wait-Text -Text '履约中' | Out-Null
+  Write-Check 'P320 member marketplace purchase uses confirmed local state'
+  Back-UntilPagePath -PagePath 'pages/MainPage' | Out-Null
+
+  Open-Hm7Service -Title 'Support 工单' -ExpectedText '我的工单' | Out-Null
+  Click-TopRightButton
+  Wait-Text -Text '创建工单' | Out-Null
+  Input-TextAtPlaceholder -Placeholder '输入标题' -Value 'HM7 Member Ticket'
+  Input-TextAtPlaceholder -Placeholder '输入摘要或编码' -Value 'Member connection issue'
+  Input-TextAtPlaceholder -Placeholder '输入详细内容' -Value 'HM7 member support detail'
+  Press-Back
+  Click-Text -Text '保存'
+  Wait-Text -Text 'HM7 Member Ticket' | Out-Null
+  Write-Check 'P312/P324 member creates a support ticket and list refreshes'
+  Back-UntilPagePath -PagePath 'pages/MainPage' | Out-Null
+
+  $messages = Open-Hm7Service -Title '消息' -ExpectedText '消息'
+  Assert-VisibleMarkers -Layout $messages -Markers @(
+    '工单状态已更新',
+    '未读'
+  ) -Scope 'P313 member messages'
+  Click-Text -Text '工单状态已更新'
+  Wait-Text -Text '消息详情' | Out-Null
+  Click-Text -Text '标记已读'
+  Wait-Text -Text '确认标记已读？' | Out-Null
+  Click-Text -Text '确认'
+  Wait-Text -Text '已读' | Out-Null
+  Write-Check 'P326 member marks a message read through confirmed local state'
+  Back-UntilPagePath -PagePath 'pages/MainPage' | Out-Null
+  Assert-NetworkSentinel
+  Write-Check 'HM-7 member journey completed with zero Demo network attempts'
+}
+
 try {
   if (-not (Test-Path -LiteralPath $HdcPath -PathType Leaf)) {
     throw "hdc not found: $HdcPath"
@@ -1878,16 +2072,34 @@ try {
   Write-Check 'cold start is at login without clearing app data'
 
   $exclusiveModes = 0
-  foreach ($mode in @($Hm3Only, $Hm4Only, $Hm5Only, $Hm6Only, $AccountRefreshOnly)) {
+  foreach ($mode in @($Hm3Only, $Hm4Only, $Hm5Only, $Hm6Only, $Hm7Only, $AccountRefreshOnly)) {
     if ($mode) {
       $exclusiveModes += 1
     }
   }
   if ($exclusiveModes -gt 1) {
-    throw 'Hm3Only, Hm4Only, Hm5Only, Hm6Only, and AccountRefreshOnly are mutually exclusive.'
+    throw 'Hm3Only, Hm4Only, Hm5Only, Hm6Only, Hm7Only, and AccountRefreshOnly are mutually exclusive.'
   }
 
-  if ($Hm6Only) {
+  if ($Hm7Only) {
+    Login-PreviewAccount -Account 'superadmin'
+    Assert-Hm7PlatformJourney
+    Logout-CurrentAccount
+
+    Stop-App
+    Start-App
+    Wait-Text -Text 'superadmin' | Out-Null
+    Login-PreviewAccount -Account 'tenantadmin'
+    Assert-Hm7TenantJourney
+    Logout-CurrentAccount
+
+    Stop-App
+    Start-App
+    Wait-Text -Text 'superadmin' | Out-Null
+    Login-PreviewAccount -Account 'member'
+    Assert-Hm7MemberJourney
+    Logout-CurrentAccount
+  } elseif ($Hm6Only) {
     Login-PreviewAccount -Account 'tenantadmin'
     Assert-Hm6TenantAdminJourney
     Logout-CurrentAccount
@@ -2009,7 +2221,9 @@ try {
   }
   Write-Check "PID $appPid has no app-authored ERROR/FATAL or crash signature ($($errorLines.Count) framework lines observed)"
 
-  if ($Hm6Only) {
+  if ($Hm7Only) {
+    Write-Host "HM-7 DEVICE AUDIT PASSED: $script:checks checks"
+  } elseif ($Hm6Only) {
     Write-Host "HM-6 DEVICE AUDIT PASSED: $script:checks checks"
   } elseif ($Hm5Only) {
     Write-Host "HM-5 DEVICE AUDIT PASSED: $script:checks checks"

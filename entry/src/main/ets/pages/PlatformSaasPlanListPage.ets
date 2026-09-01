@@ -92,6 +92,14 @@ struct PlatformSaasPlanListPage {
         }
         .alignItems(HorizontalAlign.Start)
         .layoutWeight(1)
+        Button('+')
+          .width(42)
+          .height(42)
+          .fontSize(22)
+          .fontColor(AppTheme.primaryText)
+          .backgroundColor(AppTheme.primaryStrong)
+          .borderRadius(8)
+          .onClick(() => router.pushUrl({ url: 'pages/PlatformSaasPlanEditorPage' }))
       }
       .width('100%')
       .padding({ left: 16, right: 16, top: 18, bottom: 12 })

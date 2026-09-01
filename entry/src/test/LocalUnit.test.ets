@@ -56,6 +56,11 @@ import {
   DemoHm6LocationRepository,
   RealHm6LocationRepository
 } from '../main/ets/repository/Hm6LocationRepository'
+import {
+  DemoHm7CapabilityRepository,
+  RealHm7CapabilityRepository
+} from '../main/ets/repository/Hm7CapabilityRepository'
+import { Hm7RequestContext } from '../main/ets/model/Hm7Models'
 import { DemoAlertEventSource } from '../main/ets/preview/DemoAlertEventSource'
 import { DemoTenantOpsRepository } from '../main/ets/repository/TenantOpsRepository'
 import { DemoTenantDataRepository } from '../main/ets/repository/DemoTenantDataRepository'
@@ -2204,6 +2209,118 @@ export default function localUnitTest() {
       let factoryErrorKey = ''
       try {
         await repositoryFactory.hm6Location().locations('')
+      } catch (error) {
+        factoryErrorKey = error instanceof ApiError ? error.errorKey : ''
+      }
+      expect(factoryErrorKey).assertEqual('REAL_API_PENDING')
+      runtimeModeStore.activateDemo()
+    })
+
+    it('coversHm7PlatformCapabilitiesFiltersAndActions', 0, async () => {
+      const repository = new DemoHm7CapabilityRepository()
+      const context: Hm7RequestContext = {
+        scope: 'PLATFORM', role: 0, userId: '1', tenantId: '',
+        tenantRole: 'PLATFORM_ADMIN', contextType: 'PLATFORM'
+      }
+      expect((await repository.list(context, 'SAAS', '', '')).length).assertEqual(2)
+      expect((await repository.list(context, 'MARKETPLACE', '访客', '')).length).assertEqual(1)
+      expect((await repository.list(context, 'AI_REVIEW', '', 'MANUAL')).length).assertEqual(1)
+      const failedJob = (await repository.list(context, 'RUNTIME', '', 'FAILED'))[0]
+      const recovered = await repository.act(context, 'RUNTIME', failedJob.id, '人工恢复')
+      expect(recovered.record.status).assertEqual('RECOVERED')
+      expect(recovered.requestId).assertEqual('HM7-0001')
+      expect((await repository.list(context, 'AUDIT', '', '')).length).assertEqual(2)
+    })
+
+    it('isolatesHm7TenantsAndKeepsPlatformDelegateReadOnly', 0, async () => {
+      const repository = new DemoHm7CapabilityRepository()
+      const tenantOne: Hm7RequestContext = {
+        scope: 'TENANT', role: 1, userId: '2', tenantId: 'preview-tenant-01',
+        tenantRole: 'TENANT_ADMIN', contextType: 'TENANT'
+      }
+      const tenantTwo: Hm7RequestContext = {
+        scope: 'TENANT', role: 1, userId: '2', tenantId: 'preview-tenant-02',
+        tenantRole: 'TENANT_ADMIN', contextType: 'TENANT'
+      }
+      const saved = await repository.save(tenantOne, 'CONTENT', 0, {
+        title: 'HM7 组织公告', subtitle: '仅组织一可见', detail: '租户隔离验证'
+      })
+      expect((await repository.list(tenantOne, 'CONTENT', 'HM7', '')).length).assertEqual(1)
+      expect((await repository.list(tenantTwo, 'CONTENT', 'HM7', '')).length).assertEqual(0)
+      expect(saved.requestId).assertEqual('HM7-0001')
+
+      const delegate: Hm7RequestContext = {
+        scope: 'TENANT', role: 0, userId: '1', tenantId: 'preview-tenant-01',
+        tenantRole: 'PLATFORM_ADMIN', contextType: 'PLATFORM_TENANT'
+      }
+      expect((await repository.list(delegate, 'CONTENT', '', '')).length).assertEqual(2)
+      let errorKey = ''
+      try {
+        await repository.act(delegate, 'CONTENT', saved.record.id, '撤回')
+      } catch (error) {
+        errorKey = error instanceof ApiError ? error.errorKey : ''
+      }
+      expect(errorKey).assertEqual('PLATFORM_DELEGATE_READ_ONLY')
+      const entitlement = (await repository.list(delegate, 'ENTITLEMENT', '', ''))[0]
+      const adjusted = await repository.act(delegate, 'ENTITLEMENT', entitlement.id, '调整权益')
+      expect(adjusted.record.status).assertEqual('ACTIVE')
+      expect(adjusted.requestId).assertEqual('HM7-0002')
+    })
+
+    it('supportsHm7MemberWorkflowsAndDeterministicReset', 0, async () => {
+      const repository = new DemoHm7CapabilityRepository()
+      const member: Hm7RequestContext = {
+        scope: 'MEMBER', role: 2, userId: '3', tenantId: 'preview-tenant-01',
+        tenantRole: 'MEMBER', contextType: 'TENANT'
+      }
+      const support = await repository.save(member, 'SUPPORT', 0, {
+        title: '成员新工单', subtitle: '连接问题', detail: '会议区连接不稳定'
+      })
+      expect(support.record.status).assertEqual('DRAFT')
+      expect(support.requestId).assertEqual('HM7-0001')
+      const message = (await repository.list(member, 'NOTICE', '', 'UNREAD'))[0]
+      const read = await repository.act(member, 'NOTICE', message.id, '标记已读')
+      expect(read.record.status).assertEqual('READ')
+      expect(read.requestId).assertEqual('HM7-0002')
+
+      repository.setScenario('FILTER_EMPTY')
+      expect((await repository.list(member, 'SUPPORT', '不存在', '')).length).assertEqual(0)
+      repository.reset()
+      const resetSupport = await repository.save(member, 'SUPPORT', 0, {
+        title: '成员新工单', subtitle: '连接问题', detail: '确定性重置'
+      })
+      expect(resetSupport.record.id).assertEqual(7002)
+      expect(resetSupport.requestId).assertEqual('HM7-0001')
+    })
+
+    it('keepsHm7DemoTransportFreeAndRealPending', 0, async () => {
+      runtimeModeStore.activateDemo()
+      runtimeModeStore.resetNetworkSentinel()
+      networkTransportFactory.resetCounters()
+      const context: Hm7RequestContext = {
+        scope: 'PLATFORM', role: 0, userId: '1', tenantId: '',
+        tenantRole: 'PLATFORM_ADMIN', contextType: 'PLATFORM'
+      }
+      const repository = new DemoHm7CapabilityRepository()
+      await repository.list(context, 'SAAS', '', '')
+      await repository.list(context, 'MARKETPLACE', '', '')
+      await repository.list(context, 'RUNTIME', '', '')
+      expect(runtimeModeStore.getBlockedNetworkAttempts()).assertEqual(0)
+      expect(networkTransportFactory.snapshot().http).assertEqual(0)
+      expect(networkTransportFactory.snapshot().webSocket).assertEqual(0)
+      expect(networkTransportFactory.snapshot().mqtt).assertEqual(0)
+
+      let realErrorKey = ''
+      try {
+        await new RealHm7CapabilityRepository().list(context, 'SAAS', '', '')
+      } catch (error) {
+        realErrorKey = error instanceof ApiError ? error.errorKey : ''
+      }
+      expect(realErrorKey).assertEqual('REAL_API_PENDING')
+      runtimeModeStore.activateReal()
+      let factoryErrorKey = ''
+      try {
+        await repositoryFactory.hm7Capability().list(context, 'SAAS', '', '')
       } catch (error) {
         factoryErrorKey = error instanceof ApiError ? error.errorKey : ''
       }
