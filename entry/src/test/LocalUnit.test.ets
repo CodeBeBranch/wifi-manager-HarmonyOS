@@ -48,6 +48,14 @@ import {
   DemoHm4SecurityRepository,
   RealHm4SecurityRepository
 } from '../main/ets/repository/Hm4SecurityRepository'
+import {
+  DemoHm5MemberRepository,
+  RealHm5MemberRepository
+} from '../main/ets/repository/Hm5MemberRepository'
+import {
+  DemoHm6LocationRepository,
+  RealHm6LocationRepository
+} from '../main/ets/repository/Hm6LocationRepository'
 import { DemoAlertEventSource } from '../main/ets/preview/DemoAlertEventSource'
 import { DemoTenantOpsRepository } from '../main/ets/repository/TenantOpsRepository'
 import { DemoTenantDataRepository } from '../main/ets/repository/DemoTenantDataRepository'
@@ -1921,6 +1929,285 @@ export default function localUnitTest() {
         directErrorKey = error instanceof ApiError ? error.errorKey : ''
       }
       expect(directErrorKey).assertEqual('REAL_API_PENDING')
+      runtimeModeStore.activateDemo()
+    })
+
+    it('runsHm5OrderPaymentAndRefundWithIndependentRequestIds', 0, () => {
+      const repository = new DemoHm5MemberRepository()
+      const memberKey = 'preview-tenant-01|preview-member'
+      const order = repository.createOrder(memberKey, 603, true)
+      expect(order.status).assertEqual('PENDING_PAYMENT')
+      expect(order.orderRequestId).assertEqual('ORDER-DEMO-0003')
+
+      const payment = repository.createPayment(memberKey, order.id, true)
+      expect(payment.status).assertEqual('SUCCEEDED')
+      expect(payment.paymentRequestId).assertEqual('PAYMENT-DEMO-0002')
+      expect(payment.paymentRequestId === order.orderRequestId).assertFalse()
+      expect(repository.orderDetail(memberKey, order.id).status).assertEqual('PAID')
+
+      const refund = repository.applyRefund(memberKey, order.id, '购买计划发生变化', true)
+      expect(refund.status).assertEqual('PENDING')
+      expect(refund.refundRequestId).assertEqual('REFUND-DEMO-0002')
+      expect(refund.refundRequestId === payment.paymentRequestId).assertFalse()
+      expect(repository.orderDetail(memberKey, order.id).status).assertEqual('REFUNDING')
+    })
+
+    it('rejectsHm5DuplicateUnauthorizedAndInvalidStateMutations', 0, () => {
+      const repository = new DemoHm5MemberRepository()
+      const memberKey = 'preview-tenant-01|preview-member'
+      let unauthorizedStatus = 0
+      try {
+        repository.createOrder(memberKey, 603, false)
+      } catch (error) {
+        unauthorizedStatus = error instanceof ApiError ? error.httpStatus : 0
+      }
+      expect(unauthorizedStatus).assertEqual(403)
+
+      let duplicateStatus = 0
+      try {
+        repository.createOrder(memberKey, 601, true)
+      } catch (error) {
+        duplicateStatus = error instanceof ApiError ? error.httpStatus : 0
+      }
+      expect(duplicateStatus).assertEqual(409)
+
+      let paymentConflict = 0
+      try {
+        repository.createPayment(memberKey, 901, true)
+      } catch (error) {
+        paymentConflict = error instanceof ApiError ? error.httpStatus : 0
+      }
+      expect(paymentConflict).assertEqual(409)
+
+      const before = repository.locationPermission(memberKey)
+      expect(before.granted).assertFalse()
+      expect(repository.setLocationPermission(memberKey, true, true).granted).assertTrue()
+      repository.clearLocationHistory(memberKey, true)
+      expect(repository.locationHistory(memberKey).length).assertEqual(0)
+    })
+
+    it('keepsHm5TenantRefundReviewIsolatedAndStateful', 0, () => {
+      const repository = new DemoHm5MemberRepository()
+      const tenantOne = repository.tenantRefunds('preview-tenant-01')
+      const tenantTwo = repository.tenantRefunds('preview-tenant-02')
+      expect(tenantOne.length).assertEqual(1)
+      expect(tenantTwo.length).assertEqual(1)
+
+      const approved = repository.reviewTenantRefund(
+        'preview-tenant-01', tenantOne[0].id, true, '材料完整，同意退款', true)
+      expect(approved.status).assertEqual('APPROVED')
+      expect(repository.tenantRefundDetail('preview-tenant-01', tenantOne[0].id).status)
+        .assertEqual('APPROVED')
+      expect(repository.tenantRefundDetail('preview-tenant-02', tenantTwo[0].id).status)
+        .assertEqual('PENDING')
+
+      let delegateDenied = 0
+      try {
+        repository.reviewTenantRefund(
+          'preview-tenant-02', tenantTwo[0].id, false, '无审核权限', false)
+      } catch (error) {
+        delegateDenied = error instanceof ApiError ? error.httpStatus : 0
+      }
+      expect(delegateDenied).assertEqual(403)
+    })
+
+    it('coversHm5ScenarioMatrixAndDeterministicReset', 0, () => {
+      const repository = new DemoHm5MemberRepository()
+      const memberKey = 'preview-tenant-01|preview-member'
+
+      repository.setScenario('EMPTY')
+      expect(repository.summary(memberKey).activeConnections).assertEqual(0)
+      expect(repository.orders(memberKey).length).assertEqual(0)
+      let activeSessionRequired = ''
+      try {
+        repository.createOrder(memberKey, 603, true)
+      } catch (error) {
+        activeSessionRequired = error instanceof ApiError ? error.errorKey : ''
+      }
+      expect(activeSessionRequired).assertEqual('ACTIVE_SESSION_REQUIRED')
+
+      repository.setScenario('PARTIAL_FAILURE')
+      let partialStatus = 0
+      try {
+        repository.purchases(memberKey)
+      } catch (error) {
+        partialStatus = error instanceof ApiError ? error.httpStatus : 0
+      }
+      expect(partialStatus).assertEqual(502)
+      expect(repository.orders(memberKey).length).assertEqual(2)
+      expect(repository.entitlement(memberKey).status).assertEqual('ACTIVE')
+
+      repository.setScenario('FORBIDDEN')
+      let forbiddenStatus = 0
+      try {
+        repository.summary(memberKey)
+      } catch (error) {
+        forbiddenStatus = error instanceof ApiError ? error.httpStatus : 0
+      }
+      expect(forbiddenStatus).assertEqual(403)
+
+      repository.reset()
+      expect(repository.getScenario()).assertEqual('NORMAL')
+      const resetOrder = repository.createOrder(memberKey, 603, true)
+      expect(resetOrder.id).assertEqual(910)
+      expect(resetOrder.orderRequestId).assertEqual('ORDER-DEMO-0003')
+    })
+
+    it('keepsHm5DemoTransportFreeAndRealPending', 0, async () => {
+      runtimeModeStore.activateDemo()
+      runtimeModeStore.resetNetworkSentinel()
+      networkTransportFactory.resetCounters()
+      const repository = new DemoHm5MemberRepository()
+      const memberKey = 'preview-tenant-01|preview-member'
+      repository.summary(memberKey)
+      repository.products(memberKey, '')
+      repository.orders(memberKey)
+      repository.refunds(memberKey)
+      repository.locationHistory(memberKey)
+      expect(runtimeModeStore.getBlockedNetworkAttempts()).assertEqual(0)
+      expect(networkTransportFactory.snapshot().http).assertEqual(0)
+      expect(networkTransportFactory.snapshot().webSocket).assertEqual(0)
+      expect(networkTransportFactory.snapshot().mqtt).assertEqual(0)
+
+      let realErrorKey = ''
+      try {
+        await new RealHm5MemberRepository().orders()
+      } catch (error) {
+        realErrorKey = error instanceof ApiError ? error.errorKey : ''
+      }
+      expect(realErrorKey).assertEqual('REAL_API_PENDING')
+      runtimeModeStore.activateReal()
+      let factoryErrorKey = ''
+      try {
+        await repositoryFactory.hm5Member().summary()
+      } catch (error) {
+        factoryErrorKey = error instanceof ApiError ? error.errorKey : ''
+      }
+      expect(factoryErrorKey).assertEqual('REAL_API_PENDING')
+      runtimeModeStore.activateDemo()
+    })
+
+    it('coversHm6MapStatesAndAnalyticsPartialFailure', 0, () => {
+      const repository = new DemoHm6LocationRepository()
+      const tenantId = 'preview-tenant-01'
+      const ready = repository.gis(tenantId)
+      expect(ready.state).assertEqual('READY')
+      expect(ready.track.length).assertEqual(3)
+      expect(ready.stays.length).assertEqual(2)
+      expect(ready.heat.length).assertEqual(3)
+      expect(ready.coverage.length).assertEqual(2)
+      expect(repository.analytics(tenantId).signals.length).assertEqual(3)
+
+      repository.setScenario('PARTIAL_FAILURE')
+      const lowAccuracy = repository.gis(tenantId)
+      expect(lowAccuracy.state).assertEqual('LOW_ACCURACY')
+      expect(lowAccuracy.accuracyMeters).assertEqual(120)
+      let partialStatus = 0
+      try {
+        repository.analytics(tenantId)
+      } catch (error) {
+        partialStatus = error instanceof ApiError ? error.httpStatus : 0
+      }
+      expect(partialStatus).assertEqual(502)
+
+      repository.setScenario('EMPTY')
+      expect(repository.gis(tenantId).state).assertEqual('NO_DATA')
+      repository.setScenario('FORBIDDEN')
+      expect(repository.gis(tenantId).state).assertEqual('PERMISSION_DENIED')
+    })
+
+    it('validatesAndMutatesHm6GeofencesWithAuthorization', 0, () => {
+      const repository = new DemoHm6LocationRepository()
+      const tenantId = 'preview-tenant-01'
+      let invalidErrorKey = ''
+      try {
+        repository.saveGeofence(tenantId, {
+          code: 'x', name: 'x', shape: 'CIRCLE', centerLatitude: 91,
+          centerLongitude: 121.4737, radiusMeters: 10, vertexCount: 0
+        }, null, true)
+      } catch (error) {
+        invalidErrorKey = error instanceof ApiError ? error.errorKey : ''
+      }
+      expect(invalidErrorKey).assertEqual('GEOFENCE_INPUT_INVALID')
+
+      let forbiddenStatus = 0
+      try {
+        repository.toggleGeofence(tenantId, 1700, false)
+      } catch (error) {
+        forbiddenStatus = error instanceof ApiError ? error.httpStatus : 0
+      }
+      expect(forbiddenStatus).assertEqual(403)
+
+      const created = repository.saveGeofence(tenantId, {
+        code: 'GEOFENCE-LAB', name: '实验室区域', shape: 'CIRCLE',
+        centerLatitude: 31.2305, centerLongitude: 121.4738,
+        radiusMeters: 120, vertexCount: 0
+      }, null, true)
+      expect(created.id).assertEqual(1750)
+      expect(created.enabled).assertTrue()
+      expect(repository.toggleGeofence(tenantId, created.id, true).enabled).assertFalse()
+      repository.deleteGeofence(tenantId, created.id, true)
+      expect(repository.geofences(tenantId, 'GEOFENCE-LAB').length).assertEqual(0)
+    })
+
+    it('isolatesAndDeterministicallyResetsHm6TenantData', 0, () => {
+      const repository = new DemoHm6LocationRepository()
+      const tenantOne = 'preview-tenant-01'
+      const tenantTwo = 'preview-tenant-02'
+      const created = repository.saveGeofence(tenantOne, {
+        code: 'GEOFENCE-HM6', name: 'HM6 演示区域', shape: 'POLYGON',
+        centerLatitude: 31.2306, centerLongitude: 121.4736,
+        radiusMeters: 0, vertexCount: 5
+      }, null, true)
+      expect(created.id).assertEqual(1750)
+      expect(repository.geofences(tenantOne, 'GEOFENCE-HM6').length).assertEqual(1)
+      expect(repository.geofences(tenantTwo, 'GEOFENCE-HM6').length).assertEqual(0)
+      expect(repository.locations(tenantOne, '')[0].subjectId)
+        .assertEqual('MEMBER-A-01')
+      expect(repository.locations(tenantTwo, '')[0].subjectId)
+        .assertEqual('MEMBER-B-01')
+
+      repository.reset()
+      expect(repository.getScenario()).assertEqual('NORMAL')
+      expect(repository.geofences(tenantOne, 'GEOFENCE-HM6').length).assertEqual(0)
+      const resetCreated = repository.saveGeofence(tenantOne, {
+        code: 'GEOFENCE-HM6', name: 'HM6 演示区域', shape: 'POLYGON',
+        centerLatitude: 31.2306, centerLongitude: 121.4736,
+        radiusMeters: 0, vertexCount: 5
+      }, null, true)
+      expect(resetCreated.id).assertEqual(1750)
+    })
+
+    it('keepsHm6DemoTransportFreeAndRealPending', 0, async () => {
+      runtimeModeStore.activateDemo()
+      runtimeModeStore.resetNetworkSentinel()
+      networkTransportFactory.resetCounters()
+      const repository = new DemoHm6LocationRepository()
+      repository.locations('preview-tenant-01', '')
+      repository.gis('preview-tenant-01')
+      repository.geofences('preview-tenant-01', '')
+      repository.geofenceEvents('preview-tenant-01', 1700, '')
+      repository.analytics('preview-tenant-01')
+      expect(runtimeModeStore.getBlockedNetworkAttempts()).assertEqual(0)
+      expect(networkTransportFactory.snapshot().http).assertEqual(0)
+      expect(networkTransportFactory.snapshot().webSocket).assertEqual(0)
+      expect(networkTransportFactory.snapshot().mqtt).assertEqual(0)
+
+      let realErrorKey = ''
+      try {
+        await new RealHm6LocationRepository().analytics()
+      } catch (error) {
+        realErrorKey = error instanceof ApiError ? error.errorKey : ''
+      }
+      expect(realErrorKey).assertEqual('REAL_API_PENDING')
+      runtimeModeStore.activateReal()
+      let factoryErrorKey = ''
+      try {
+        await repositoryFactory.hm6Location().locations('')
+      } catch (error) {
+        factoryErrorKey = error instanceof ApiError ? error.errorKey : ''
+      }
+      expect(factoryErrorKey).assertEqual('REAL_API_PENDING')
       runtimeModeStore.activateDemo()
     })
   })

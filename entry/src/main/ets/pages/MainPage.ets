@@ -43,6 +43,7 @@ import {
 } from './PlatformRootContent'
 import { SessionListContent } from './SessionListPage'
 import { TenantServiceContent } from './TenantServiceContent'
+import { MemberHomeContent, MemberServiceContent } from './MemberRootContent'
 
 interface DeviceDetailParams {
   nodeId: string
@@ -301,9 +302,11 @@ struct MainPage {
           selectedTab: $selectedTab
         })
           .layoutWeight(1)
-      } else if (this.currentRootRouteId() === 'tenant/home' ||
-        this.currentRootRouteId() === 'member/home') {
+      } else if (this.currentRootRouteId() === 'tenant/home') {
         this.homeTab()
+      } else if (this.currentRootRouteId() === 'member/home') {
+        MemberHomeContent()
+          .layoutWeight(1)
       } else if (this.currentRootRouteId() === 'platform/tenants') {
         PlatformTenantListContent({ embedded: true })
           .layoutWeight(1)
@@ -332,6 +335,9 @@ struct MainPage {
           .layoutWeight(1)
       } else if (this.currentRootRouteId() === 'tenant/services') {
         TenantServiceContent()
+          .layoutWeight(1)
+      } else if (this.currentRootRouteId() === 'member/services') {
+        MemberServiceContent()
           .layoutWeight(1)
       } else {
         this.servicesTab()

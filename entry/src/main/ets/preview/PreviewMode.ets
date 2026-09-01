@@ -104,7 +104,10 @@ function createManagedTenantContext(tenantId: string): TenantContext {
       'ALERT_HANDLE',
       'COMMAND_SUBMIT',
       'WIFI_CONFIG_SUBMIT',
-      'REFUND_REVIEW'
+      'REFUND_REVIEW',
+      'LOCATION_READ',
+      'GEOFENCE_READ',
+      'ANALYTICS_READ'
     ]
   }
 }
@@ -131,12 +134,21 @@ function createTenantContext(role: number): TenantContext {
         'COMMAND_SUBMIT',
         'WIFI_CONFIG_SUBMIT',
         'RULE_WRITE',
-        'BLACKLIST_WRITE'
+        'BLACKLIST_WRITE',
+        'REFUND_REVIEW',
+        'LOCATION_READ',
+        'GEOFENCE_READ',
+        'GEOFENCE_WRITE',
+        'ANALYTICS_READ'
       ]
       : [
         'SESSION_SELF_READ',
         'PROFILE_SELF_WRITE',
-        'ENTITLEMENT_SELF_READ'
+        'ENTITLEMENT_SELF_READ',
+        'ORDER_SELF_WRITE',
+        'PAYMENT_SELF_WRITE',
+        'REFUND_SELF_WRITE',
+        'LOCATION_SELF_WRITE'
       ]
   }
 }

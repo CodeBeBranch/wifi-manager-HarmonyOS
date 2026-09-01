@@ -52,7 +52,11 @@ export struct TenantServiceContent {
           { title: '告警中心', description: '查看当前组织告警和关联设备', route: 'pages/AlertListPage' },
           { title: '告警规则', description: '查看规则；租户管理员可创建、编辑和启停', route: 'pages/TenantRuleListPage' },
           { title: '安全审计', description: '只读查看安全操作记录和处理历史', route: 'pages/TenantAuditListPage' },
-          { title: '告警分析', description: '查看告警处理与规则摘要', route: 'pages/AlertAnalyticsPage' }
+          { title: '告警分析', description: '查看告警处理与规则摘要', route: 'pages/AlertAnalyticsPage' },
+          { title: '退款审核', description: '查看并处理当前组织的成员退款申请', route: 'pages/TenantRefundListPage' },
+          { title: '位置管理', description: '筛选组织位置并查看轨迹、停留点、热力和节点覆盖', route: 'pages/TenantLocationListPage' },
+          { title: '电子围栏', description: '查看围栏、事件；租户管理员可编辑、启停和删除', route: 'pages/TenantGeofenceListPage' },
+          { title: '网络分析', description: '查看组织信号质量和流量趋势', route: 'pages/TenantAnalyticsPage' }
         ] as ServiceItem[], (item: ServiceItem) => {
           Row({ space: 12 }) {
             Column({ space: 4 }) {

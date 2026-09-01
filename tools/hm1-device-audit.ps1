@@ -6,7 +6,9 @@ param(
   [string]$HdcPath = 'D:\devEcoStudio\DevEcoStudio\sdk\default\openharmony\toolchains\hdc.exe',
   [switch]$AccountRefreshOnly,
   [switch]$Hm3Only,
-  [switch]$Hm4Only
+  [switch]$Hm4Only,
+  [switch]$Hm5Only,
+  [switch]$Hm6Only
 )
 
 $ErrorActionPreference = 'Stop'
@@ -268,6 +270,34 @@ function Click-TopRightButton {
   )
   if ($result -notmatch 'No Error') {
     throw "Device did not confirm the top-right click: $result"
+  }
+  Start-Sleep -Milliseconds 600
+}
+
+function Click-NearestClickableToText {
+  param(
+    [Parameter(Mandatory = $true)][string]$Text
+  )
+
+  $layout = Get-Layout
+  $anchor = Select-TextNode -Layout $layout -Text $Text
+  $target = @(
+    Find-ClickableNodes -Node $layout |
+      Sort-Object {
+        ([Math]::Abs($_.Bounds.CenterY - $anchor.Bounds.CenterY) * 10000) +
+          [Math]::Abs($_.Bounds.CenterX - $anchor.Bounds.CenterX)
+      }
+  ) | Select-Object -First 1
+  if ($null -eq $target) {
+    throw "No clickable control is visible near text: $Text"
+  }
+  Write-Host "[ACTION] click control near '$Text' at ($($target.Bounds.CenterX),$($target.Bounds.CenterY))"
+  $result = Invoke-Hdc -Arguments @(
+    '-t', $Serial, 'shell', 'uitest', 'uiInput', 'click',
+    [string]$target.Bounds.CenterX, [string]$target.Bounds.CenterY
+  )
+  if ($result -notmatch 'No Error') {
+    throw "Device did not confirm click near '$Text': $result"
   }
   Start-Sleep -Milliseconds 600
 }
@@ -1513,6 +1543,321 @@ function Assert-Hm4PlatformDelegateJourney {
   Write-Check 'HM-4 platform delegate journey completed'
 }
 
+function Open-Hm5MemberService {
+  param(
+    [Parameter(Mandatory = $true)][string]$Title,
+    [Parameter(Mandatory = $true)][string]$ExpectedText
+  )
+
+  $current = Get-Layout
+  $atServiceRoot = (Get-PagePath -Layout $current) -eq 'pages/MainPage' -and
+    ((Test-Text -Layout $current -Text '权益、消费记录与本人数据') -or
+      (Test-Text -Layout $current -Text '产品与购买'))
+  if (-not $atServiceRoot) {
+    Click-Text -Text '服务' -Area Bottom
+    Wait-Text -Text '权益、消费记录与本人数据' | Out-Null
+  }
+  Reveal-Text -Text $Title | Out-Null
+  Click-Text -Text $Title
+  return Wait-Text -Text $ExpectedText
+}
+
+function Assert-Hm5MemberJourney {
+  Assert-BottomTabs -Expected @('首页', '连接', '服务', '我的')
+  Reset-Hm2DemoState
+  Click-Text -Text '首页' -Area Bottom
+  $memberHome = Wait-Text -Text '成员中心'
+  Assert-VisibleMarkers -Layout $memberHome -Markers @(
+    '畅连月包',
+    '在线连接',
+    '待支付',
+    '常用服务'
+  ) -Scope 'P300 member home'
+  Write-Check 'P300 member home shows entitlement and consumption summary'
+
+  $entitlement = Open-Hm5MemberService -Title '当前权益' -ExpectedText '当前权益'
+  Assert-VisibleMarkers -Layout $entitlement -Markers @(
+    '畅连月包',
+    '剩余流量',
+    '有效期至'
+  ) -Scope 'P303 member entitlement'
+  Write-Check 'P303 member entitlement is visible'
+  Back-UntilPagePath -PagePath 'pages/MainPage' | Out-Null
+
+  $products = Open-Hm5MemberService -Title '产品与购买' -ExpectedText '可购产品'
+  Reveal-Text -Text '畅连月包' | Out-Null
+  $productLayout = Get-Layout
+  $productNode = Select-TextNode -Layout $productLayout -Text '畅连月包'
+  Click-Text -Text '购买' -NearestY $productNode.Bounds.CenterY
+  Wait-Text -Text '创建订单' | Out-Null
+  $orderProductLayout = Get-Layout
+  $orderProductNode = Select-TextNode -Layout $orderProductLayout -Text '畅连月包'
+  Click-Text -Text '选择' -NearestY $orderProductNode.Bounds.CenterY
+  Click-Text -Text '确认创建'
+  $order = Wait-Text -Text 'ORDER-DEMO-0003'
+  Assert-VisibleMarkers -Layout $order -Markers @(
+    '畅连月包',
+    '待支付',
+    '本地演示支付'
+  ) -Scope 'P304/P306/P307/P317 member order'
+  Write-Check 'P304/P306/P307/P317 member creates an order with deterministic requestId'
+
+  Click-Text -Text '本地演示支付'
+  $payment = Wait-Text -Text '确认本地演示支付'
+  Assert-VisibleMarkers -Layout $payment -Markers @(
+    '本地演示',
+    '畅连月包',
+    'ORDER-DEMO-0003'
+  ) -Scope 'P308 member payment'
+  Click-Text -Text '确认本地演示支付'
+  Wait-Text -Text 'payment requestId：PAYMENT-DEMO-0002' | Out-Null
+  Write-Check 'P308 local Demo payment has an independent requestId'
+
+  Press-Back
+  Wait-Text -Text '申请退款' | Out-Null
+  Click-Text -Text '申请退款'
+  Wait-Text -Text '退款原因，4 到 120 个字符' | Out-Null
+  Input-TextAtPlaceholder -Placeholder '退款原因，4 到 120 个字符' -Value 'HM5 demo refund request'
+  Press-Back
+  Click-Text -Text '提交退款申请'
+  $refund = Wait-Text -Text 'REFUND-DEMO-0002'
+  Assert-VisibleMarkers -Layout $refund -Markers @(
+    '退款详情',
+    '待审核',
+    'HM5 demo refund request'
+  ) -Scope 'P309/P318/P319 member refund'
+  Write-Check 'P309/P318/P319 member refund has its own requestId and state'
+  Back-UntilPagePath -PagePath 'pages/MainPage' -MaxBacks 8 | Out-Null
+
+  $location = Open-Hm5MemberService -Title '位置隐私' -ExpectedText '本人位置授权'
+  Click-NearestClickableToText -Text '本人位置授权'
+  Wait-Text -Text '位置授权已开启' | Out-Null
+  Click-Text -Text '查看位置历史'
+  $history = Wait-Text -Text 'A 栋共享办公区'
+  Assert-VisibleMarkers -Layout $history -Markers @(
+    '位置历史',
+    '一层访客区'
+  ) -Scope 'P314/P327 location privacy'
+  Click-Text -Text '清除'
+  Click-Text -Text '确认清除'
+  Wait-Text -Text '当前没有本人位置历史' | Out-Null
+  Write-Check 'P314/P327 member grants location access and clears only personal history'
+  Back-UntilPagePath -PagePath 'pages/MainPage' | Out-Null
+
+  Click-Text -Text '服务' -Area Bottom
+  $services = Wait-Text -Text '权益、消费记录与本人数据'
+  foreach ($adminEntry in @('退款审核', '告警规则', '安全审计')) {
+    if (Test-Text -Layout $services -Text $adminEntry) {
+      throw "Member service catalog leaked an administrator entry: $adminEntry"
+    }
+  }
+  Write-Check 'P315 member service catalog exposes no administrator entry'
+  Assert-NetworkSentinel
+  Write-Check 'HM-5 member journey completed with zero Demo network attempts'
+}
+
+function Assert-Hm5TenantRefundJourney {
+  Assert-BottomTabs -Expected @('首页', '设备', '告警', '服务', '我的')
+  Reset-Hm2DemoState
+  $refunds = Open-Hm4Service -Title '退款审核' -ExpectedText '退款审核'
+  Assert-VisibleMarkers -Layout $refunds -Markers @(
+    '畅连月包',
+    'REFUND-DEMO-0001',
+    '待审核 · ¥39.90'
+  ) -Scope 'P219 tenant refund list'
+  Click-Text -Text '畅连月包'
+  $detail = Wait-Text -Text '退款审核详情'
+  Assert-VisibleMarkers -Layout $detail -Markers @(
+    '出差计划调整，暂不需要本月权益',
+    'REFUND-DEMO-0001',
+    '通过',
+    '拒绝'
+  ) -Scope 'P234 tenant refund detail'
+  Input-TextAtPlaceholder -Placeholder '审核说明' -Value 'HM5 refund approved'
+  Press-Back
+  Click-Text -Text '通过'
+  Wait-Text -Text '¥39.90 · 已通过' | Out-Null
+  Write-Check 'P219/P234 tenant administrator reviews a pending refund'
+  Back-UntilPagePath -PagePath 'pages/MainPage' | Out-Null
+  Assert-NetworkSentinel
+  Write-Check 'HM-5 tenant refund journey completed with zero Demo network attempts'
+}
+
+function Assert-Hm6MapState {
+  param(
+    [Parameter(Mandatory = $true)][string]$ScenarioLabel,
+    [Parameter(Mandatory = $true)][string]$ExpectedText
+  )
+
+  Set-Hm2Scenario -Label $ScenarioLabel
+  Open-Hm4Service -Title '位置管理' -ExpectedText '位置列表' | Out-Null
+  Click-Text -Text '地图'
+  Wait-Text -Text $ExpectedText | Out-Null
+  Write-Check "P224 map state '$ScenarioLabel' shows '$ExpectedText'"
+  Back-UntilPagePath -PagePath 'pages/MainPage' | Out-Null
+}
+
+function Assert-Hm6TenantAdminJourney {
+  Assert-BottomTabs -Expected @('首页', '设备', '告警', '服务', '我的')
+  Reset-Hm2DemoState
+
+  $locations = Open-Hm4Service -Title '位置管理' -ExpectedText '位置列表'
+  Assert-VisibleMarkers -Layout $locations -Markers @(
+    '张晨',
+    '一层边缘节点',
+    '李妍',
+    'A 栋共享办公区'
+  ) -Scope 'P223 tenant location list'
+  Click-Text -Text '地图'
+  $track = Wait-Text -Text '轨迹图层'
+  Assert-VisibleMarkers -Layout $track -Markers @(
+    '位置地图',
+    '本地演示地图',
+    '#1 一层访客区'
+  ) -Scope 'P224 tenant GIS track'
+  Click-Text -Text '停留'
+  Wait-Text -Text '停留点图层' | Out-Null
+  Click-Text -Text '热力'
+  Wait-Text -Text '热力图层' | Out-Null
+  Click-Text -Text '覆盖'
+  Wait-Text -Text '节点覆盖图层' | Out-Null
+  Write-Check 'P224 track, stay, heat, and coverage map modes are interactive'
+  Back-UntilPagePath -PagePath 'pages/MainPage' | Out-Null
+
+  $geofences = Open-Hm4Service -Title '电子围栏' -ExpectedText '电子围栏'
+  Assert-VisibleMarkers -Layout $geofences -Markers @(
+    '办公区域',
+    '访客停留区',
+    '已启用',
+    '已停用'
+  ) -Scope 'P225 tenant geofence list'
+  Click-TopRightButton
+  Wait-Text -Text '创建围栏' | Out-Null
+  Input-TextAtPlaceholder -Placeholder '围栏编码，例如 GEOFENCE-LAB' -Value 'GEOFENCE-HM6-AUDIT'
+  Input-TextAtPlaceholder -Placeholder '围栏名称' -Value 'HM6 Audit Fence'
+  Press-Back
+  Click-Text -Text '保存围栏'
+  Wait-Text -Text '电子围栏' | Out-Null
+  $createdList = Reveal-Text -Text 'HM6 Audit Fence'
+  Write-Check 'P242 tenant administrator creates a validated geofence'
+
+  $actionLayout = Reveal-Text -Text '停用'
+  $createdNode = Select-TextNode -Layout $actionLayout -Text 'HM6 Audit Fence'
+  Click-Text -Text '停用' -NearestY $createdNode.Bounds.CenterY
+  Wait-Text -Text '请再次确认停用“HM6 Audit Fence”' | Out-Null
+  Click-Text -Text '确认停用'
+  Wait-Text -Text '围栏已停用' | Out-Null
+  Write-Check 'P225 geofence toggle requires and accepts a second confirmation'
+
+  Click-Text -Text '办公区域'
+  $detail = Wait-Text -Text '围栏详情'
+  Assert-VisibleMarkers -Layout $detail -Markers @(
+    'GEOFENCE-OFFICE',
+    '多边形 · 6 个顶点',
+    '查看围栏事件（3）'
+  ) -Scope 'P243 tenant geofence detail'
+  Click-Text -Text '查看围栏事件（3）'
+  $events = Wait-Text -Text '只读事件记录'
+  Assert-VisibleMarkers -Layout $events -Markers @(
+    '进入围栏',
+    '离开围栏',
+    '张晨 · A 栋共享办公区',
+    '李妍 · 二层会议区'
+  ) -Scope 'P244 read-only geofence events'
+  Write-Check 'P243/P244 geofence detail links to read-only events'
+  Back-UntilPagePath -PagePath 'pages/TenantGeofenceListPage' | Out-Null
+
+  $deleteList = Reveal-Text -Text 'HM6 Audit Fence'
+  $deleteNode = Select-TextNode -Layout $deleteList -Text 'HM6 Audit Fence'
+  Click-Text -Text '删除' -NearestY $deleteNode.Bounds.CenterY
+  Wait-Text -Text '删除会同时移除本地事件，请再次确认删除“HM6 Audit Fence”' | Out-Null
+  Click-Text -Text '确认删除'
+  Wait-Text -Text '围栏已删除' | Out-Null
+  if (Test-Text -Layout (Get-Layout) -Text 'HM6 Audit Fence') {
+    throw 'P225 confirmed delete left the geofence visible.'
+  }
+  Write-Check 'P225 geofence delete requires and accepts a second confirmation'
+  Back-UntilPagePath -PagePath 'pages/MainPage' | Out-Null
+
+  $analytics = Open-Hm4Service -Title '网络分析' -ExpectedText '网络分析'
+  Assert-VisibleMarkers -Layout $analytics -Markers @(
+    '平均信号',
+    '总流量',
+    '峰值终端',
+    'A 栋共享办公区'
+  ) -Scope 'P226 tenant signal analytics'
+  Click-Text -Text '流量'
+  Wait-Text -Text '下行 1380 MB · 上行 420 MB' | Out-Null
+  Write-Check 'P226 signal and traffic analytics modes are interactive'
+  Back-UntilPagePath -PagePath 'pages/MainPage' | Out-Null
+
+  Assert-Hm6MapState -ScenarioLabel '局部失败' -ExpectedText '定位精度不足 · 约 120 m'
+  Assert-Hm6MapState -ScenarioLabel '空数据' -ExpectedText '暂无位置数据'
+  Assert-Hm6MapState -ScenarioLabel '无权限' -ExpectedText '位置权限被拒绝'
+
+  Reset-Hm2DemoState
+  $resetGeofences = Open-Hm4Service -Title '电子围栏' -ExpectedText '电子围栏'
+  if (Test-Text -Layout $resetGeofences -Text 'HM6 Audit Fence') {
+    throw 'Demo reset did not remove the HM-6 geofence mutation.'
+  }
+  Assert-VisibleMarkers -Layout $resetGeofences -Markers @(
+    '办公区域',
+    '访客停留区'
+  ) -Scope 'HM-6 deterministic reset'
+  Write-Check 'HM-6 reset restores deterministic tenant location data'
+  Back-UntilPagePath -PagePath 'pages/MainPage' | Out-Null
+  Assert-NetworkSentinel
+  Write-Check 'HM-6 tenant administrator journey completed with zero Demo network attempts'
+}
+
+function Assert-Hm6PlatformDelegateJourney {
+  Assert-BottomTabs -Expected @('首页', '组织', '账号', '服务', '我的')
+  Reset-Hm2DemoState
+
+  Enter-Hm3ManagedTenant -TenantName '边缘网络实验室'
+  $tenantOne = Open-Hm4Service -Title '位置管理' -ExpectedText '位置列表'
+  Assert-VisibleMarkers -Layout $tenantOne -Markers @(
+    '成员 · MEMBER-A-01',
+    '设备 · EDGE-A-01'
+  ) -Scope 'P223 platform delegate tenant 01 locations'
+  if (Test-Text -Layout $tenantOne -Text '成员 · MEMBER-B-01') {
+    throw 'Tenant 02 location leaked into tenant 01.'
+  }
+  Back-UntilPagePath -PagePath 'pages/MainPage' | Out-Null
+
+  $delegateGeofences = Open-Hm4Service -Title '电子围栏' -ExpectedText '电子围栏'
+  foreach ($writeAction in @('+', '编辑', '停用', '启用', '删除')) {
+    if (Test-Text -Layout $delegateGeofences -Text $writeAction) {
+      throw "Platform delegate unexpectedly received GEOFENCE_WRITE action: $writeAction"
+    }
+  }
+  Click-Text -Text '办公区域'
+  $delegateDetail = Wait-Text -Text '围栏详情'
+  if (Test-Text -Layout $delegateDetail -Text '编辑') {
+    throw 'Platform delegate geofence detail exposed an edit action.'
+  }
+  Click-Text -Text '查看围栏事件（3）'
+  Wait-Text -Text '只读事件记录' | Out-Null
+  Write-Check 'P225/P243/P244 platform delegate remains read-only'
+  Back-UntilPagePath -PagePath 'pages/MainPage' | Out-Null
+  Return-Hm3Platform
+
+  Enter-Hm3ManagedTenant -TenantName '分部办公网络'
+  $tenantTwo = Open-Hm4Service -Title '位置管理' -ExpectedText '位置列表'
+  Assert-VisibleMarkers -Layout $tenantTwo -Markers @(
+    '成员 · MEMBER-B-01',
+    '设备 · EDGE-B-01'
+  ) -Scope 'P223 platform delegate tenant 02 locations'
+  if (Test-Text -Layout $tenantTwo -Text '成员 · MEMBER-A-01') {
+    throw 'Tenant 01 location leaked into tenant 02.'
+  }
+  Write-Check 'HM-6 platform delegate location data is tenant-isolated'
+  Back-UntilPagePath -PagePath 'pages/MainPage' | Out-Null
+  Return-Hm3Platform
+  Assert-NetworkSentinel
+  Write-Check 'HM-6 platform delegate journey completed with zero Demo network attempts'
+}
+
 try {
   if (-not (Test-Path -LiteralPath $HdcPath -PathType Leaf)) {
     throw "hdc not found: $HdcPath"
@@ -1533,16 +1878,38 @@ try {
   Write-Check 'cold start is at login without clearing app data'
 
   $exclusiveModes = 0
-  foreach ($mode in @($Hm3Only, $Hm4Only, $AccountRefreshOnly)) {
+  foreach ($mode in @($Hm3Only, $Hm4Only, $Hm5Only, $Hm6Only, $AccountRefreshOnly)) {
     if ($mode) {
       $exclusiveModes += 1
     }
   }
   if ($exclusiveModes -gt 1) {
-    throw 'Hm3Only, Hm4Only, and AccountRefreshOnly are mutually exclusive.'
+    throw 'Hm3Only, Hm4Only, Hm5Only, Hm6Only, and AccountRefreshOnly are mutually exclusive.'
   }
 
-  if ($Hm4Only) {
+  if ($Hm6Only) {
+    Login-PreviewAccount -Account 'tenantadmin'
+    Assert-Hm6TenantAdminJourney
+    Logout-CurrentAccount
+
+    Stop-App
+    Start-App
+    Wait-Text -Text 'superadmin' | Out-Null
+    Login-PreviewAccount -Account 'superadmin'
+    Assert-Hm6PlatformDelegateJourney
+    Logout-CurrentAccount
+  } elseif ($Hm5Only) {
+    Login-PreviewAccount -Account 'member'
+    Assert-Hm5MemberJourney
+    Logout-CurrentAccount
+
+    Stop-App
+    Start-App
+    Wait-Text -Text 'superadmin' | Out-Null
+    Login-PreviewAccount -Account 'tenantadmin'
+    Assert-Hm5TenantRefundJourney
+    Logout-CurrentAccount
+  } elseif ($Hm4Only) {
     Login-PreviewAccount -Account 'tenantadmin'
     Assert-Hm4TenantAdminJourney
     Logout-CurrentAccount
@@ -1642,7 +2009,11 @@ try {
   }
   Write-Check "PID $appPid has no app-authored ERROR/FATAL or crash signature ($($errorLines.Count) framework lines observed)"
 
-  if ($Hm4Only) {
+  if ($Hm6Only) {
+    Write-Host "HM-6 DEVICE AUDIT PASSED: $script:checks checks"
+  } elseif ($Hm5Only) {
+    Write-Host "HM-5 DEVICE AUDIT PASSED: $script:checks checks"
+  } elseif ($Hm4Only) {
     Write-Host "HM-4 DEVICE AUDIT PASSED: $script:checks checks"
   } elseif ($Hm3Only) {
     Write-Host "HM-3 DEVICE AUDIT PASSED: $script:checks checks"
