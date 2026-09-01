@@ -71,4 +71,5 @@ passed 34 checks:
   `REAL_API_PENDING`.
 - Real payment, production service calls, and Real device integration were not
   added or exercised by HM-7.
-- HM-8 delivery closeout has not started.
+- This HM-7 snapshot predates delivery closeout; current HM-8 evidence is
+  recorded in `docs/HM8-implementation-audit.md`.

@@ -36,11 +36,11 @@ struct MemberProductListPage {
   build() {
     Column() {
       Row({ space: 10 }) {
-        Button('‹').width(44).height(44).fontSize(24).backgroundColor(AppTheme.surfaceRaised)
+        Button('‹').accessibilityText('返回').width(44).height(44).fontSize(24).backgroundColor(AppTheme.surfaceRaised)
           .fontColor(AppTheme.textSoft).borderRadius(8).onClick(() => router.back())
         Text('可购产品').fontSize(22).fontWeight(FontWeight.Bold)
           .fontColor(AppTheme.text).layoutWeight(1)
-        Button('购买记录').height(40).fontSize(12).backgroundColor(AppTheme.surfaceMuted)
+        Button('购买记录').height(44).fontSize(12).backgroundColor(AppTheme.surfaceMuted)
           .fontColor(AppTheme.primary).borderRadius(6)
           .onClick(() => router.pushUrl({ url: 'pages/MemberPurchaseListPage' }))
       }.width('100%')
@@ -82,7 +82,7 @@ struct MemberProductListPage {
                 Row() {
                   Text(product.quotaGb > 0 ? `${product.quotaGb} GB` : '不限量')
                     .fontSize(12).fontColor(AppTheme.muted).layoutWeight(1)
-                  Button('购买').height(38).fontSize(13).backgroundColor(AppTheme.primaryStrong)
+                  Button('购买').height(44).fontSize(13).backgroundColor(AppTheme.primaryStrong)
                     .fontColor(AppTheme.primaryText).borderRadius(6).onClick(() => this.buy(product))
                 }.width('100%')
               }.width('100%').padding(14).backgroundColor(AppTheme.surface)

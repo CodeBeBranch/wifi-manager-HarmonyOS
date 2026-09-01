@@ -28,11 +28,11 @@ struct MemberPurchaseListPage {
   build() {
     Column() {
       Row({ space: 10 }) {
-        Button('‹').width(44).height(44).fontSize(24).backgroundColor(AppTheme.surfaceRaised)
+        Button('‹').accessibilityText('返回').width(44).height(44).fontSize(24).backgroundColor(AppTheme.surfaceRaised)
           .fontColor(AppTheme.textSoft).borderRadius(8).onClick(() => router.back())
         Text('购买记录').fontSize(22).fontWeight(FontWeight.Bold)
           .fontColor(AppTheme.text).layoutWeight(1)
-        Button('使用流水').height(40).fontSize(12).backgroundColor(AppTheme.surfaceMuted)
+        Button('使用流水').height(44).fontSize(12).backgroundColor(AppTheme.surfaceMuted)
           .fontColor(AppTheme.primary).borderRadius(6)
           .onClick(() => router.pushUrl({ url: 'pages/MemberUsageHistoryPage' }))
       }.width('100%')

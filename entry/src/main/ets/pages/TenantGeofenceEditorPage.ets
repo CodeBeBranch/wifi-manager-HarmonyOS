@@ -65,7 +65,7 @@ struct TenantGeofenceEditorPage {
     Scroll() {
       Column({ space: 12 }) {
         Row({ space: 10 }) {
-          Button('‹').width(44).height(44).fontSize(24).backgroundColor(AppTheme.surfaceRaised)
+          Button('‹').accessibilityText('返回').width(44).height(44).fontSize(24).backgroundColor(AppTheme.surfaceRaised)
             .fontColor(AppTheme.textSoft).borderRadius(8).onClick(() => router.back())
           Text(this.geofenceId > 0 ? '编辑围栏' : '创建围栏').fontSize(22)
             .fontWeight(FontWeight.Bold)
@@ -78,12 +78,12 @@ struct TenantGeofenceEditorPage {
         TextInput({ text: this.name, placeholder: '围栏名称' }).width('100%').height(46)
           .backgroundColor(AppTheme.surface).border({ width: 1, color: AppTheme.border })
           .borderRadius(8).onChange((value: string) => this.name = value)
-        Row({ space: 6 }) {
-          Button('圆形').layoutWeight(1).height(42)
+      Row({ space: 8 }) {
+          Button('圆形').layoutWeight(1).height(44)
             .backgroundColor(this.shape === 'CIRCLE' ? AppTheme.primaryStrong : AppTheme.surfaceMuted)
             .fontColor(this.shape === 'CIRCLE' ? AppTheme.primaryText : AppTheme.textSoft)
             .borderRadius(6).onClick(() => this.shape = 'CIRCLE')
-          Button('多边形').layoutWeight(1).height(42)
+          Button('多边形').layoutWeight(1).height(44)
             .backgroundColor(this.shape === 'POLYGON' ? AppTheme.primaryStrong : AppTheme.surfaceMuted)
             .fontColor(this.shape === 'POLYGON' ? AppTheme.primaryText : AppTheme.textSoft)
             .borderRadius(6).onClick(() => this.shape = 'POLYGON')

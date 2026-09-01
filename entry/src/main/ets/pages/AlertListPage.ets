@@ -177,7 +177,7 @@ export struct AlertListContent {
     Column() {
       Row({ space: 12 }) {
         if (!this.embedded) {
-          Button('‹')
+          Button('‹').accessibilityText('返回')
             .width(44)
             .height(44)
             .fontSize(24)
@@ -217,7 +217,7 @@ export struct AlertListContent {
           .maxLines(1)
         if (sessionStore.isPreviewMode() || this.socketState === 'disconnected' || this.socketState === 'auth-required') {
           Button('重连')
-            .height(36)
+            .height(44)
             .fontSize(12)
             .fontColor(AppTheme.primary)
             .backgroundColor(Color.Transparent)
@@ -231,7 +231,7 @@ export struct AlertListContent {
         }
       }
       .width('100%')
-      .height(40)
+      .height(44)
       .margin({ top: 8 })
 
       if (this.liveAlertMessage.length > 0) {
@@ -242,7 +242,7 @@ export struct AlertListContent {
             .layoutWeight(1)
             .maxLines(2)
           Button('刷新')
-            .height(38)
+            .height(44)
             .fontSize(12)
             .fontColor(AppTheme.primaryText)
             .backgroundColor(AppTheme.primaryStrong)
@@ -259,7 +259,7 @@ export struct AlertListContent {
         .margin({ top: 4 })
       }
 
-      Row({ space: 4 }) {
+      Row({ space: 8 }) {
         this.statusButton('全部', '')
         this.statusButton('未处理', '0')
         this.statusButton('已处理', '1')
@@ -270,7 +270,7 @@ export struct AlertListContent {
       .borderRadius(8)
       .margin({ top: 16 })
 
-      Row({ space: 4 }) {
+      Row({ space: 8 }) {
         this.levelButton('全部级别', '')
         this.levelButton('低', '1')
         this.levelButton('中', '2')
@@ -395,7 +395,7 @@ export struct AlertListContent {
       }
 
       Row() {
-        Button('‹')
+        Button('‹').accessibilityText('返回')
           .width(44)
           .height(44)
           .fontSize(22)
@@ -410,7 +410,7 @@ export struct AlertListContent {
           .fontColor(AppTheme.muted)
           .layoutWeight(1)
           .textAlign(TextAlign.Center)
-        Button('›')
+        Button('›').accessibilityText('下一页')
           .width(44)
           .height(44)
           .fontSize(22)
@@ -434,7 +434,7 @@ export struct AlertListContent {
   private statusButton(label: string, status: string) {
     Button(label)
       .layoutWeight(1)
-      .height(38)
+      .height(44)
       .fontSize(12)
       .fontWeight(FontWeight.Medium)
       .fontColor(this.status === status ? AppTheme.primaryText : AppTheme.textSoft)
@@ -447,7 +447,7 @@ export struct AlertListContent {
   private levelButton(label: string, level: string) {
     Button(label)
       .layoutWeight(1)
-      .height(38)
+      .height(44)
       .fontSize(12)
       .fontWeight(FontWeight.Medium)
       .fontColor(this.level === level ? AppTheme.text : AppTheme.muted)

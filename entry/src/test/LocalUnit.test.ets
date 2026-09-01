@@ -2327,5 +2327,27 @@ export default function localUnitTest() {
       expect(factoryErrorKey).assertEqual('REAL_API_PENDING')
       runtimeModeStore.activateDemo()
     })
+
+    it('keepsHm7PartialFailureLocalToAiReview', 0, async () => {
+      const repository = new DemoHm7CapabilityRepository()
+      const context: Hm7RequestContext = {
+        scope: 'PLATFORM', role: 0, userId: '1', tenantId: '',
+        tenantRole: 'PLATFORM_ADMIN', contextType: 'PLATFORM'
+      }
+      repository.setScenario('PARTIAL_FAILURE')
+      expect((await repository.list(context, 'MARKETPLACE', '', '')).length).assertEqual(3)
+      let status = 0
+      let errorKey = ''
+      try {
+        await repository.list(context, 'AI_REVIEW', '', '')
+      } catch (error) {
+        status = error instanceof ApiError ? error.httpStatus : 0
+        errorKey = error instanceof ApiError ? error.errorKey : ''
+      }
+      expect(status).assertEqual(502)
+      expect(errorKey).assertEqual('HM7_AI_PARTIAL_FAILURE')
+      repository.reset()
+      expect((await repository.list(context, 'AI_REVIEW', '', '')).length).assertEqual(2)
+    })
   })
 }

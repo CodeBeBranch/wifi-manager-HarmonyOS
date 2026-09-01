@@ -223,6 +223,7 @@ export class DemoHm7CapabilityRepository implements Hm7CapabilityRepositoryContr
   }
 
   reset(): void {
+    this.scenario = 'NORMAL'
     this.records.clear()
     this.sequence = 7000
     this.requestSequence = 1
@@ -287,6 +288,20 @@ export class DemoHm7CapabilityRepository implements Hm7CapabilityRepositoryContr
     }
   }
 
+  private guardCapability(capability: Hm7Capability): void {
+    if (this.scenario === 'PARTIAL_FAILURE' && capability === 'AI_REVIEW') {
+      throw new ApiError(
+        'AI 复核暂不可用，其他计划能力仍可访问',
+        502,
+        502,
+        'HM7_AI_PARTIAL_FAILURE',
+        '',
+        '',
+        true
+      )
+    }
+  }
+
   private guardWrite(context: Hm7RequestContext, capability: Hm7Capability): void {
     this.guard(context)
     if (context.scope === 'TENANT' && context.role === 0) {
@@ -311,6 +326,7 @@ export class DemoHm7CapabilityRepository implements Hm7CapabilityRepositoryContr
   async list(context: Hm7RequestContext, capability: Hm7Capability,
     keyword: string, status: string): Promise<Hm7Record[]> {
     this.guard(context)
+    this.guardCapability(capability)
     if (this.scenario === 'EMPTY') return []
     const normalizedKeyword = keyword.trim().toLowerCase()
     const source = this.data(context, capability)
@@ -326,6 +342,7 @@ export class DemoHm7CapabilityRepository implements Hm7CapabilityRepositoryContr
 
   async detail(context: Hm7RequestContext, capability: Hm7Capability, id: number): Promise<Hm7Record> {
     this.guard(context)
+    this.guardCapability(capability)
     const source = this.data(context, capability)
     const found = source.find((item: Hm7Record) => item.id === id) ?? source[0]
     if (found === undefined) {
@@ -337,6 +354,7 @@ export class DemoHm7CapabilityRepository implements Hm7CapabilityRepositoryContr
   async save(context: Hm7RequestContext, capability: Hm7Capability,
     id: number, input: Hm7RecordInput): Promise<Hm7ActionResult> {
     this.guardWrite(context, capability)
+    this.guardCapability(capability)
     if (input.title.trim().length < 2) {
       throw new ApiError('标题至少需要 2 个字符', 400, 400, 'HM7_TITLE_REQUIRED')
     }
@@ -363,6 +381,7 @@ export class DemoHm7CapabilityRepository implements Hm7CapabilityRepositoryContr
   async act(context: Hm7RequestContext, capability: Hm7Capability,
     id: number, action: string): Promise<Hm7ActionResult> {
     this.guardWrite(context, capability)
+    this.guardCapability(capability)
     const source = this.data(context, capability)
     const record = source.find((item: Hm7Record) => item.id === id) ?? source[0]
     if (record === undefined) {

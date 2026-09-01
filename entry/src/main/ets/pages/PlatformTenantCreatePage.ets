@@ -67,7 +67,7 @@ struct PlatformTenantCreatePage {
             .fontColor([AppTheme.textSoft])
         }
         .width(42)
-        .height(42)
+        .height(44)
         .backgroundColor(AppTheme.surface)
         .border({ width: 1, color: AppTheme.border })
         .onClick(() => router.back())

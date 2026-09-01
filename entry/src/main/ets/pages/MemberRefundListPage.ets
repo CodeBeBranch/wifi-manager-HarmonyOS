@@ -34,11 +34,11 @@ struct MemberRefundListPage {
   build() {
     Column() {
       Row({ space: 10 }) {
-        Button('‹').width(44).height(44).fontSize(24).backgroundColor(AppTheme.surfaceRaised)
+        Button('‹').accessibilityText('返回').width(44).height(44).fontSize(24).backgroundColor(AppTheme.surfaceRaised)
           .fontColor(AppTheme.textSoft).borderRadius(8).onClick(() => router.back())
         Text('退款申请').fontSize(22).fontWeight(FontWeight.Bold)
           .fontColor(AppTheme.text).layoutWeight(1)
-        Button('+').width(44).height(44).fontSize(24).backgroundColor(AppTheme.primaryStrong)
+        Button('+').accessibilityText('新建').width(44).height(44).fontSize(24).backgroundColor(AppTheme.primaryStrong)
           .fontColor(AppTheme.primaryText).borderRadius(8)
           .onClick(() => router.pushUrl({ url: 'pages/MemberRefundApplyPage' }))
       }.width('100%')

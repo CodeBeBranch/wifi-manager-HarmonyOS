@@ -31,11 +31,11 @@ struct TenantLocationListPage {
   build() {
     Column() {
       Row({ space: 8 }) {
-        Button('‹').width(44).height(44).fontSize(24).backgroundColor(AppTheme.surfaceRaised)
+        Button('‹').accessibilityText('返回').width(44).height(44).fontSize(24).backgroundColor(AppTheme.surfaceRaised)
           .fontColor(AppTheme.textSoft).borderRadius(8).onClick(() => router.back())
         Text('位置列表').fontSize(22).fontWeight(FontWeight.Bold)
           .fontColor(AppTheme.text).layoutWeight(1)
-        Button('地图').height(40).fontSize(13).backgroundColor(AppTheme.surfaceMuted)
+        Button('地图').height(44).fontSize(13).backgroundColor(AppTheme.surfaceMuted)
           .fontColor(AppTheme.primary).borderRadius(6)
           .onClick(() => router.pushUrl({ url: 'pages/TenantGisPage' }))
       }.width('100%')

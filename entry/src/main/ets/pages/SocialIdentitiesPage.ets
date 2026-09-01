@@ -107,7 +107,7 @@ struct SocialIdentitiesPage {
                     ? '处理中'
                     : (item.bound ? '解绑' : '绑定'))
                     .enabled(this.workingProvider.length === 0)
-                    .height(40)
+                    .height(44)
                     .fontSize(13)
                     .fontColor(item.bound ? AppTheme.dangerText : AppTheme.primary)
                     .backgroundColor(Color.Transparent)

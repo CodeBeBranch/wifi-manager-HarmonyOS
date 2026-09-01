@@ -52,11 +52,11 @@ struct MemberOrderListPage {
   build() {
     Column() {
       Row({ space: 10 }) {
-        Button('‹').width(44).height(44).fontSize(24).backgroundColor(AppTheme.surfaceRaised)
+        Button('‹').accessibilityText('返回').width(44).height(44).fontSize(24).backgroundColor(AppTheme.surfaceRaised)
           .fontColor(AppTheme.textSoft).borderRadius(8).onClick(() => router.back())
         Text('我的订单').fontSize(22).fontWeight(FontWeight.Bold)
           .fontColor(AppTheme.text).layoutWeight(1)
-        Button('+').width(44).height(44).fontSize(24).backgroundColor(AppTheme.primaryStrong)
+        Button('+').accessibilityText('新建').width(44).height(44).fontSize(24).backgroundColor(AppTheme.primaryStrong)
           .fontColor(AppTheme.primaryText).borderRadius(8)
           .onClick(() => router.pushUrl({ url: 'pages/MemberOrderCreatePage' }))
       }.width('100%')
@@ -90,11 +90,11 @@ struct MemberOrderListPage {
                 }.width('100%')
                 Text(order.orderRequestId).fontSize(12).fontColor(AppTheme.textSoft).width('100%')
                 Row({ space: 8 }) {
-                  Button('详情').layoutWeight(1).height(38).fontSize(12)
+                  Button('详情').layoutWeight(1).height(44).fontSize(12)
                     .backgroundColor(AppTheme.surfaceMuted).fontColor(AppTheme.primary)
                     .borderRadius(6).onClick(() => this.open(order))
                   if (order.status === 'PENDING_PAYMENT') {
-                    Button('取消订单').layoutWeight(1).height(38).fontSize(12)
+                    Button('取消订单').layoutWeight(1).height(44).fontSize(12)
                       .backgroundColor(AppTheme.dangerSurface).fontColor(AppTheme.dangerText)
                       .borderRadius(6).onClick(() => this.cancel(order))
                   }

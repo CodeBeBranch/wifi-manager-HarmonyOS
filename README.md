@@ -14,12 +14,14 @@ Wifi Manager 的原生 HarmonyOS 移动客户端。客户端复用现有 Gateway
 - 告警 REST 查询、处理和 WebSocket 实时通知
 - 设备命令提交、执行记录和有界终态轮询
 - 上游 WiFi 候选配置、最新任务和有界终态轮询
+- 告警规则、安全审计和告警分析 Demo
+- 成员权益、商品、订单、支付、退款和位置隐私 Demo
+- 租户位置、地图、电子围栏、事件和网络分析 Demo
+- SaaS、Marketplace、公告、Support、AI 复核和平台运行治理 Demo
 - 浅色/深色简约移动端主题
 
-契约映射、验收证据和冻结项见
-[`docs/H0-contract-audit.md`](docs/H0-contract-audit.md)、
-[`docs/HM1-implementation-audit.md`](docs/HM1-implementation-audit.md) 和
-[`docs/HM2-implementation-audit.md`](docs/HM2-implementation-audit.md)。
+契约映射和分阶段实施证据见 `docs/H0-contract-audit.md` 与
+`docs/HM1-implementation-audit.md` 至 `docs/HM8-implementation-audit.md`。
 
 ## 本地构建
 

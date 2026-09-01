@@ -289,7 +289,7 @@ struct WifiConfigPage {
   build() {
     Column() {
       Row({ space: 12 }) {
-        Button('‹')
+        Button('‹').accessibilityText('返回')
           .width(44).height(44).fontSize(24)
           .fontColor(AppTheme.textSoft).backgroundColor(AppTheme.surfaceRaised)
           .border({ width: 1, color: AppTheme.border }).borderRadius(8)
@@ -469,7 +469,7 @@ struct WifiConfigPage {
                   this.taskRow('失败原因', this.task.failureMessage)
                 }
                 Button('查看任务详情')
-                  .height(42).fontSize(13).fontColor(AppTheme.primary)
+                  .height(44).fontSize(13).fontColor(AppTheme.primary)
                   .backgroundColor(AppTheme.surfaceRaised)
                   .border({ width: 1, color: AppTheme.border }).borderRadius(8)
                   .onClick(() => this.openTaskDetail())

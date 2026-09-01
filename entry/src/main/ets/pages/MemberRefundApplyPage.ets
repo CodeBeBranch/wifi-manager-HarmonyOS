@@ -58,7 +58,7 @@ struct MemberRefundApplyPage {
   build() {
     Column({ space: 14 }) {
       Row({ space: 10 }) {
-        Button('‹').width(44).height(44).fontSize(24).backgroundColor(AppTheme.surfaceRaised)
+        Button('‹').accessibilityText('返回').width(44).height(44).fontSize(24).backgroundColor(AppTheme.surfaceRaised)
           .fontColor(AppTheme.textSoft).borderRadius(8).onClick(() => router.back())
         Text('申请退款').fontSize(22).fontWeight(FontWeight.Bold)
           .fontColor(AppTheme.text).layoutWeight(1)
@@ -80,7 +80,7 @@ struct MemberRefundApplyPage {
                 .fontSize(12).fontColor(AppTheme.muted)
             }.alignItems(HorizontalAlign.Start).layoutWeight(1)
             Button(this.selectedOrderId === order.id ? '已选择' : '选择')
-              .height(36).fontSize(12).borderRadius(6)
+              .height(44).fontSize(12).borderRadius(6)
               .backgroundColor(this.selectedOrderId === order.id
                 ? AppTheme.primaryStrong : AppTheme.surfaceMuted)
               .fontColor(this.selectedOrderId === order.id

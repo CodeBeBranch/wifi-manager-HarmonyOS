@@ -25,10 +25,10 @@ struct AlertAnalyticsPage {
   build() {
     Column({ space: 14 }) {
       Row({ space: 10 }) {
-        Button('‹').width(44).height(44).fontSize(24).backgroundColor(AppTheme.surfaceRaised)
+        Button('‹').accessibilityText('返回').width(44).height(44).fontSize(24).backgroundColor(AppTheme.surfaceRaised)
           .fontColor(AppTheme.textSoft).borderRadius(8).onClick(() => router.back())
         Text('告警分析').fontSize(22).fontWeight(FontWeight.Bold).fontColor(AppTheme.text).layoutWeight(1)
-        Button('刷新').height(40).fontSize(13).backgroundColor(AppTheme.surfaceMuted).fontColor(AppTheme.primary)
+        Button('刷新').height(44).fontSize(13).backgroundColor(AppTheme.surfaceMuted).fontColor(AppTheme.primary)
           .borderRadius(6).onClick(() => this.load())
       }.width('100%')
       if (this.loading) {

@@ -82,7 +82,7 @@ struct PlatformSaasPlanListPage {
             .fontColor([AppTheme.textSoft])
         }
         .width(42)
-        .height(42)
+        .height(44)
         .backgroundColor(AppTheme.surface)
         .border({ width: 1, color: AppTheme.border })
         .onClick(() => router.back())
@@ -92,9 +92,9 @@ struct PlatformSaasPlanListPage {
         }
         .alignItems(HorizontalAlign.Start)
         .layoutWeight(1)
-        Button('+')
+        Button('+').accessibilityText('新建')
           .width(42)
-          .height(42)
+          .height(44)
           .fontSize(22)
           .fontColor(AppTheme.primaryText)
           .backgroundColor(AppTheme.primaryStrong)
@@ -133,7 +133,7 @@ struct PlatformSaasPlanListPage {
             this.filterButton('草稿', 'DRAFT')
           }
           .width('100%')
-          .height(42)
+          .height(50)
           .padding(3)
           .backgroundColor(AppTheme.surfaceMuted)
           .borderRadius(8)
@@ -216,7 +216,7 @@ struct PlatformSaasPlanListPage {
   private filterButton(label: string, value: string) {
     Button(label)
       .layoutWeight(1)
-      .height(36)
+      .height(44)
       .fontSize(13)
       .fontColor(this.statusFilter === value ? AppTheme.text : AppTheme.muted)
       .backgroundColor(this.statusFilter === value ? AppTheme.surface : Color.Transparent)

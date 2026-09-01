@@ -97,12 +97,12 @@ struct TenantGeofenceListPage {
   build() {
     Column() {
       Row({ space: 8 }) {
-        Button('‹').width(44).height(44).fontSize(24).backgroundColor(AppTheme.surfaceRaised)
+        Button('‹').accessibilityText('返回').width(44).height(44).fontSize(24).backgroundColor(AppTheme.surfaceRaised)
           .fontColor(AppTheme.textSoft).borderRadius(8).onClick(() => router.back())
         Text('电子围栏').fontSize(22).fontWeight(FontWeight.Bold)
           .fontColor(AppTheme.text).layoutWeight(1)
         if (this.canWrite()) {
-          Button('+').width(44).height(44).fontSize(24).backgroundColor(AppTheme.primaryStrong)
+          Button('+').accessibilityText('新建').width(44).height(44).fontSize(24).backgroundColor(AppTheme.primaryStrong)
             .fontColor(AppTheme.primaryText).borderRadius(8).onClick(() => this.edit(null))
         }
       }.width('100%')
@@ -148,17 +148,17 @@ struct TenantGeofenceListPage {
                 Text(`${item.eventCount} 条事件 · ${item.updatedAt}`).fontSize(12)
                   .fontColor(AppTheme.textSoft).width('100%')
                 if (this.canWrite()) {
-                  Row({ space: 6 }) {
-                    Button('编辑').layoutWeight(1).height(38).fontSize(12)
+                Row({ space: 8 }) {
+                    Button('编辑').layoutWeight(1).height(44).fontSize(12)
                       .backgroundColor(AppTheme.surfaceMuted).fontColor(AppTheme.primary)
                       .borderRadius(6).onClick(() => this.edit(item))
                     Button(this.confirmAction === `TOGGLE:${item.id}`
                       ? `确认${item.enabled ? '停用' : '启用'}`
-                      : (item.enabled ? '停用' : '启用')).layoutWeight(1).height(38).fontSize(12)
+                      : (item.enabled ? '停用' : '启用')).layoutWeight(1).height(44).fontSize(12)
                       .backgroundColor(AppTheme.warningSurface).fontColor(AppTheme.warningText)
                       .borderRadius(6).onClick(() => this.toggle(item))
                     Button(this.confirmAction === `DELETE:${item.id}` ? '确认删除' : '删除')
-                      .layoutWeight(1).height(38).fontSize(12)
+                      .layoutWeight(1).height(44).fontSize(12)
                       .backgroundColor(AppTheme.dangerSurface).fontColor(AppTheme.dangerText)
                       .borderRadius(6).onClick(() => this.remove(item))
                   }.width('100%')

@@ -34,19 +34,19 @@ struct TenantAnalyticsPage {
   build() {
     Column({ space: 12 }) {
       Row({ space: 10 }) {
-        Button('‹').width(44).height(44).fontSize(24).backgroundColor(AppTheme.surfaceRaised)
+        Button('‹').accessibilityText('返回').width(44).height(44).fontSize(24).backgroundColor(AppTheme.surfaceRaised)
           .fontColor(AppTheme.textSoft).borderRadius(8).onClick(() => router.back())
         Text('网络分析').fontSize(22).fontWeight(FontWeight.Bold)
           .fontColor(AppTheme.text).layoutWeight(1)
-        Button('刷新').height(40).fontSize(13).backgroundColor(AppTheme.surfaceMuted)
+        Button('刷新').height(44).fontSize(13).backgroundColor(AppTheme.surfaceMuted)
           .fontColor(AppTheme.primary).borderRadius(6).onClick(() => this.load())
       }.width('100%')
-      Row({ space: 4 }) {
-        Button('信号').layoutWeight(1).height(40)
+      Row({ space: 8 }) {
+        Button('信号').layoutWeight(1).height(44)
           .backgroundColor(this.mode === 'SIGNAL' ? AppTheme.primaryStrong : AppTheme.surfaceMuted)
           .fontColor(this.mode === 'SIGNAL' ? AppTheme.primaryText : AppTheme.textSoft)
           .borderRadius(6).onClick(() => this.mode = 'SIGNAL')
-        Button('流量').layoutWeight(1).height(40)
+        Button('流量').layoutWeight(1).height(44)
           .backgroundColor(this.mode === 'TRAFFIC' ? AppTheme.primaryStrong : AppTheme.surfaceMuted)
           .fontColor(this.mode === 'TRAFFIC' ? AppTheme.primaryText : AppTheme.textSoft)
           .borderRadius(6).onClick(() => this.mode = 'TRAFFIC')

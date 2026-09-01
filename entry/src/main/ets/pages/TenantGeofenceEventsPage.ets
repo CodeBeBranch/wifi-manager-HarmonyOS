@@ -38,7 +38,7 @@ struct TenantGeofenceEventsPage {
   build() {
     Column() {
       Row({ space: 10 }) {
-        Button('‹').width(44).height(44).fontSize(24).backgroundColor(AppTheme.surfaceRaised)
+        Button('‹').accessibilityText('返回').width(44).height(44).fontSize(24).backgroundColor(AppTheme.surfaceRaised)
           .fontColor(AppTheme.textSoft).borderRadius(8).onClick(() => router.back())
         Column({ space: 2 }) {
           Text('围栏事件').fontSize(22).fontWeight(FontWeight.Bold).fontColor(AppTheme.text)

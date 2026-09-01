@@ -175,7 +175,7 @@ struct PlatformTenantDetailPage {
             .fontColor([AppTheme.textSoft])
         }
         .width(42)
-        .height(42)
+        .height(44)
         .backgroundColor(AppTheme.surface)
         .border({ width: 1, color: AppTheme.border })
         .onClick(() => this.returnPlatform())
@@ -187,7 +187,7 @@ struct PlatformTenantDetailPage {
         .layoutWeight(1)
         Button(this.leaving ? '正在返回' : '返回平台')
           .enabled(!this.leaving)
-          .height(40)
+          .height(44)
           .fontSize(13)
           .fontColor(AppTheme.primary)
           .backgroundColor(AppTheme.surface)

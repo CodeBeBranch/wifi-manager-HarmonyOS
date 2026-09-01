@@ -154,7 +154,7 @@ export struct SessionListContent {
     Column() {
       Row({ space: 12 }) {
         if (!this.embedded) {
-          Button('‹')
+          Button('‹').accessibilityText('返回')
             .width(44)
             .height(44)
             .fontSize(24)
@@ -183,7 +183,7 @@ export struct SessionListContent {
       }
       .width('100%')
 
-      Row({ space: 4 }) {
+      Row({ space: 8 }) {
         this.statusButton('全部', '')
         this.statusButton('连接中', '1')
         this.statusButton('待确认', '2')
@@ -223,7 +223,7 @@ export struct SessionListContent {
       Row({ space: 8 }) {
         TextInput({ text: this.nodeId, placeholder: '设备编号' })
           .layoutWeight(1)
-          .height(42)
+          .height(44)
           .fontSize(13)
           .fontColor(AppTheme.text)
           .placeholderColor(AppTheme.muted)
@@ -234,7 +234,7 @@ export struct SessionListContent {
         if (this.admin) {
           TextInput({ text: this.userId, placeholder: '用户编号' })
             .layoutWeight(1)
-            .height(42)
+            .height(44)
             .fontSize(13)
             .fontColor(AppTheme.text)
             .placeholderColor(AppTheme.muted)
@@ -338,7 +338,7 @@ export struct SessionListContent {
       }
 
       Row() {
-        Button('‹')
+        Button('‹').accessibilityText('返回')
           .width(44)
           .height(44)
           .fontSize(22)
@@ -353,7 +353,7 @@ export struct SessionListContent {
           .fontColor(AppTheme.muted)
           .layoutWeight(1)
           .textAlign(TextAlign.Center)
-        Button('›')
+        Button('›').accessibilityText('下一页')
           .width(44)
           .height(44)
           .fontSize(22)
@@ -377,7 +377,7 @@ export struct SessionListContent {
   private statusButton(label: string, status: string) {
     Button(label)
       .layoutWeight(1)
-      .height(38)
+      .height(44)
       .fontSize(11)
       .fontWeight(FontWeight.Medium)
       .fontColor(this.status === status ? AppTheme.primaryText : AppTheme.textSoft)

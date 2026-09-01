@@ -55,12 +55,12 @@ struct TenantGeofenceDetailPage {
   build() {
     Column({ space: 12 }) {
       Row({ space: 10 }) {
-        Button('‹').width(44).height(44).fontSize(24).backgroundColor(AppTheme.surfaceRaised)
+        Button('‹').accessibilityText('返回').width(44).height(44).fontSize(24).backgroundColor(AppTheme.surfaceRaised)
           .fontColor(AppTheme.textSoft).borderRadius(8).onClick(() => router.back())
         Text('围栏详情').fontSize(22).fontWeight(FontWeight.Bold)
           .fontColor(AppTheme.text).layoutWeight(1)
         if (this.canWrite() && this.geofence !== null) {
-          Button('编辑').height(40).fontSize(13).backgroundColor(AppTheme.surfaceMuted)
+          Button('编辑').height(44).fontSize(13).backgroundColor(AppTheme.surfaceMuted)
             .fontColor(AppTheme.primary).borderRadius(6).onClick(() => this.edit())
         }
       }.width('100%')

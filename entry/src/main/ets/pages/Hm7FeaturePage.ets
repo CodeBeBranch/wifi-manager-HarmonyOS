@@ -212,7 +212,7 @@ export struct Hm7FeaturePage {
   build() {
     Column() {
       Row({ space: 10 }) {
-        Button('‹').width(44).height(44).fontSize(24)
+        Button('‹').accessibilityText('返回').width(44).height(44).fontSize(24)
           .backgroundColor(AppTheme.surfaceRaised).fontColor(AppTheme.textSoft)
           .borderRadius(8).onClick(() => router.back())
         Column({ space: 2 }) {
@@ -221,10 +221,10 @@ export struct Hm7FeaturePage {
             .fontColor(AppTheme.text).maxLines(1).textOverflow({ overflow: TextOverflow.Ellipsis })
         }.alignItems(HorizontalAlign.Start).layoutWeight(1)
         if (this.config.mode === 'LIST' && this.config.editorRoute.length > 0 && this.writable()) {
-          Button('+').width(44).height(44).fontSize(24).backgroundColor(AppTheme.primaryStrong)
+          Button('+').accessibilityText('新建').width(44).height(44).fontSize(24).backgroundColor(AppTheme.primaryStrong)
             .fontColor(AppTheme.primaryText).borderRadius(8).onClick(() => this.openEditor(null))
         } else if (!this.loading) {
-          Button('↻').width(44).height(44).fontSize(20).backgroundColor(AppTheme.surfaceMuted)
+          Button('↻').accessibilityText('刷新').width(44).height(44).fontSize(20).backgroundColor(AppTheme.surfaceMuted)
             .fontColor(AppTheme.primary).borderRadius(8).onClick(() => this.load())
         }
       }.width('100%').padding({ left: 16, right: 16, top: 16, bottom: 12 })
@@ -264,16 +264,16 @@ export struct Hm7FeaturePage {
           .fontColor(AppTheme.primaryText).borderRadius(8).onClick(() => this.load())
       }.width('100%')
       if (this.relatedRoute().length > 0) {
-        Button(this.relatedLabel()).width('100%').height(42)
+        Button(this.relatedLabel()).width('100%').height(44)
           .backgroundColor(AppTheme.surface).fontColor(AppTheme.primary)
           .border({ width: 1, color: AppTheme.border }).borderRadius(8)
           .onClick(() => router.pushUrl({ url: this.relatedRoute() }))
       }
-      Row({ space: 4 }) {
+      Row({ space: 8 }) {
         this.filterButton('全部', '')
         this.filterButton('处理中', 'PENDING')
         this.filterButton('已生效', 'ACTIVE')
-      }.width('100%').padding(4).backgroundColor(AppTheme.surfaceMuted).borderRadius(8)
+      }.width('100%').padding(8).backgroundColor(AppTheme.surfaceMuted).borderRadius(8)
       this.messages()
       if (this.loading) {
         LoadingProgress().width(36).height(36).color(AppTheme.primary).margin({ top: 32 })
@@ -461,7 +461,7 @@ export struct Hm7FeaturePage {
 
   @Builder
   private filterButton(label: string, value: string) {
-    Button(label).layoutWeight(1).height(36).fontSize(12)
+    Button(label).layoutWeight(1).height(44).fontSize(12)
       .backgroundColor(this.statusFilter === value ? AppTheme.surface : Color.Transparent)
       .fontColor(this.statusFilter === value ? AppTheme.text : AppTheme.muted)
       .borderRadius(6).onClick(() => {

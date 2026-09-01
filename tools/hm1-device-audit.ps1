@@ -9,7 +9,8 @@ param(
   [switch]$Hm4Only,
   [switch]$Hm5Only,
   [switch]$Hm6Only,
-  [switch]$Hm7Only
+  [switch]$Hm7Only,
+  [switch]$Hm8Only
 )
 
 $ErrorActionPreference = 'Stop'
@@ -490,6 +491,27 @@ function Assert-SessionRestore {
     throw "Session was not restored for '$Account'."
   }
   Write-Check "$Account session restore after force-stop"
+}
+
+function Assert-ForegroundResume {
+  $beforeText = Invoke-Hdc -Arguments @(
+    '-t', $Serial, 'shell', 'pidof', $BundleName
+  )
+  $beforePid = (($beforeText -split '\s+')[0]).Trim()
+  Invoke-Hdc -Arguments @(
+    '-t', $Serial, 'shell', 'uitest', 'uiInput', 'keyEvent', 'Home'
+  ) | Out-Null
+  Start-Sleep -Milliseconds 700
+  Start-App
+  Wait-Text -Text '我的' | Out-Null
+  $afterText = Invoke-Hdc -Arguments @(
+    '-t', $Serial, 'shell', 'pidof', $BundleName
+  )
+  $afterPid = (($afterText -split '\s+')[0]).Trim()
+  if ($beforePid -notmatch '^\d+$' -or $afterPid -ne $beforePid) {
+    throw "Foreground resume restarted the app process: $beforePid -> $afterPid"
+  }
+  Write-Check "foreground resume kept application process $afterPid"
 }
 
 function Click-TabAndWait {
@@ -2072,16 +2094,86 @@ try {
   Write-Check 'cold start is at login without clearing app data'
 
   $exclusiveModes = 0
-  foreach ($mode in @($Hm3Only, $Hm4Only, $Hm5Only, $Hm6Only, $Hm7Only, $AccountRefreshOnly)) {
+  foreach ($mode in @($Hm3Only, $Hm4Only, $Hm5Only, $Hm6Only, $Hm7Only, $Hm8Only, $AccountRefreshOnly)) {
     if ($mode) {
       $exclusiveModes += 1
     }
   }
   if ($exclusiveModes -gt 1) {
-    throw 'Hm3Only, Hm4Only, Hm5Only, Hm6Only, Hm7Only, and AccountRefreshOnly are mutually exclusive.'
+    throw 'Hm3Only, Hm4Only, Hm5Only, Hm6Only, Hm7Only, Hm8Only, and AccountRefreshOnly are mutually exclusive.'
   }
 
-  if ($Hm7Only) {
+  if ($Hm8Only) {
+    $baseJourneys = @(
+      [pscustomobject]@{
+        Account = 'superadmin'
+        Tabs = @('首页', '组织', '账号', '服务', '我的')
+      },
+      [pscustomobject]@{
+        Account = 'tenantadmin'
+        Tabs = @('首页', '设备', '告警', '服务', '我的')
+      },
+      [pscustomobject]@{
+        Account = 'member'
+        Tabs = @('首页', '连接', '服务', '我的')
+      }
+    )
+    foreach ($journey in $baseJourneys) {
+      Stop-App
+      Start-App
+      Wait-Text -Text 'superadmin' | Out-Null
+      Login-PreviewAccount -Account $journey.Account
+      Assert-BottomTabs -Expected $journey.Tabs
+      if ($journey.Account -eq 'superadmin') {
+        Assert-SuperAdminSwitch
+        Assert-Hm2SuperAdminJourney
+      }
+      Assert-SessionRestore -Account $journey.Account -ExpectedTabs $journey.Tabs
+      if ($journey.Account -eq 'tenantadmin') {
+        Assert-ForegroundResume
+      }
+      Assert-NetworkSentinel
+      Logout-CurrentAccount
+    }
+
+    Login-PreviewAccount -Account 'tenantadmin'
+    Assert-Hm3TenantAdminJourney
+    Logout-CurrentAccount
+    Login-PreviewAccount -Account 'superadmin'
+    Assert-Hm3SuperAdminJourney
+    Logout-CurrentAccount
+
+    Login-PreviewAccount -Account 'tenantadmin'
+    Assert-Hm4TenantAdminJourney
+    Logout-CurrentAccount
+    Login-PreviewAccount -Account 'superadmin'
+    Assert-Hm4PlatformDelegateJourney
+    Logout-CurrentAccount
+
+    Login-PreviewAccount -Account 'member'
+    Assert-Hm5MemberJourney
+    Logout-CurrentAccount
+    Login-PreviewAccount -Account 'tenantadmin'
+    Assert-Hm5TenantRefundJourney
+    Logout-CurrentAccount
+
+    Login-PreviewAccount -Account 'tenantadmin'
+    Assert-Hm6TenantAdminJourney
+    Logout-CurrentAccount
+    Login-PreviewAccount -Account 'superadmin'
+    Assert-Hm6PlatformDelegateJourney
+    Logout-CurrentAccount
+
+    Login-PreviewAccount -Account 'superadmin'
+    Assert-Hm7PlatformJourney
+    Logout-CurrentAccount
+    Login-PreviewAccount -Account 'tenantadmin'
+    Assert-Hm7TenantJourney
+    Logout-CurrentAccount
+    Login-PreviewAccount -Account 'member'
+    Assert-Hm7MemberJourney
+    Logout-CurrentAccount
+  } elseif ($Hm7Only) {
     Login-PreviewAccount -Account 'superadmin'
     Assert-Hm7PlatformJourney
     Logout-CurrentAccount
@@ -2221,7 +2313,9 @@ try {
   }
   Write-Check "PID $appPid has no app-authored ERROR/FATAL or crash signature ($($errorLines.Count) framework lines observed)"
 
-  if ($Hm7Only) {
+  if ($Hm8Only) {
+    Write-Host "HM-8 DEVICE AUDIT PASSED: $script:checks checks"
+  } elseif ($Hm7Only) {
     Write-Host "HM-7 DEVICE AUDIT PASSED: $script:checks checks"
   } elseif ($Hm6Only) {
     Write-Host "HM-6 DEVICE AUDIT PASSED: $script:checks checks"

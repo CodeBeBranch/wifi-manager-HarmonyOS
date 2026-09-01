@@ -182,7 +182,7 @@ struct EnvironmentPage {
               .alignItems(HorizontalAlign.Start)
               .layoutWeight(1)
               Button('切换')
-                .height(36)
+                .height(44)
                 .fontSize(13)
                 .fontColor(AppTheme.primary)
                 .backgroundColor(AppTheme.surfaceMuted)

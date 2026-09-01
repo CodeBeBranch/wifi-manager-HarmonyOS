@@ -103,11 +103,11 @@ struct NoticeListPage {
       .width('100%')
       .padding({ left: 12, right: 12, top: 12 })
 
-      Row({ space: 4 }) {
+      Row({ space: 8 }) {
         ForEach(['全部', '安全', '服务', '账号'], (item: string) => {
           Button(item)
             .layoutWeight(1)
-            .height(40)
+            .height(44)
             .fontSize(13)
             .fontColor(this.category === item ? AppTheme.primaryText : AppTheme.textSoft)
             .backgroundColor(this.category === item ? AppTheme.primaryStrong : AppTheme.surface)

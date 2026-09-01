@@ -85,11 +85,11 @@ struct TenantRuleListPage {
   build() {
     Column() {
       Row({ space: 10 }) {
-        Button('‹').width(44).height(44).fontSize(24).backgroundColor(AppTheme.surfaceRaised)
+        Button('‹').accessibilityText('返回').width(44).height(44).fontSize(24).backgroundColor(AppTheme.surfaceRaised)
           .fontColor(AppTheme.textSoft).borderRadius(8).onClick(() => router.back())
         Text('告警规则').fontSize(22).fontWeight(FontWeight.Bold).fontColor(AppTheme.text).layoutWeight(1)
         if (this.canWrite()) {
-          Button('+').width(44).height(44).fontSize(24).backgroundColor(AppTheme.primaryStrong)
+          Button('+').accessibilityText('新建').width(44).height(44).fontSize(24).backgroundColor(AppTheme.primaryStrong)
             .fontColor(AppTheme.primaryText).borderRadius(8).onClick(() => this.edit(null))
         }
       }.width('100%')
@@ -125,17 +125,17 @@ struct TenantRuleListPage {
                       .fontSize(12).fontColor(AppTheme.muted)
                   }.alignItems(HorizontalAlign.Start).layoutWeight(1)
                   if (this.canWrite()) {
-                    Button('编辑').height(34).fontSize(12).backgroundColor(AppTheme.surfaceMuted)
+                    Button('编辑').height(44).fontSize(12).backgroundColor(AppTheme.surfaceMuted)
                       .fontColor(AppTheme.primary).borderRadius(6).onClick(() => this.edit(rule))
                   }
                 }.width('100%')
                 Text(rule.condition).fontSize(13).fontColor(AppTheme.textSoft).width('100%').maxLines(2)
                 if (this.canWrite()) {
                   Row({ space: 8 }) {
-                    Button(rule.enabled ? '停用' : '启用').layoutWeight(1).height(38).fontSize(12)
+                    Button(rule.enabled ? '停用' : '启用').layoutWeight(1).height(44).fontSize(12)
                       .backgroundColor(AppTheme.surfaceMuted).fontColor(AppTheme.textSoft).borderRadius(6)
                       .onClick(() => this.toggle(rule))
-                    Button(this.confirmingDelete === rule.id ? '确认删除' : '删除').layoutWeight(1).height(38)
+                    Button(this.confirmingDelete === rule.id ? '确认删除' : '删除').layoutWeight(1).height(44)
                       .fontSize(12).backgroundColor(AppTheme.dangerSurface).fontColor(AppTheme.dangerText).borderRadius(6)
                       .onClick(() => this.confirmingDelete === rule.id
                         ? this.remove(rule.id) : this.confirmingDelete = rule.id)

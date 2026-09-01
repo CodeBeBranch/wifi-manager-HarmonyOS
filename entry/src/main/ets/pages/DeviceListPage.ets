@@ -72,7 +72,7 @@ export struct DeviceListContent {
     Column() {
       Row({ space: 12 }) {
         if (!this.embedded) {
-          Button('‹')
+          Button('‹').accessibilityText('返回')
             .width(44).height(44).fontSize(24)
             .fontColor(AppTheme.textSoft).backgroundColor(AppTheme.surfaceRaised)
             .border({ width: 1, color: AppTheme.border }).borderRadius(6)
@@ -89,7 +89,7 @@ export struct DeviceListContent {
           .border({ width: 1, color: AppTheme.borderStrong }).borderRadius(6)
           .onClick(() => this.load(this.current))
         if (this.writable) {
-          Button('+')
+          Button('+').accessibilityText('新建')
             .width(44).height(44).fontSize(24)
             .fontColor(AppTheme.primaryText).backgroundColor(AppTheme.primaryStrong)
             .borderRadius(8)
@@ -180,14 +180,14 @@ export struct DeviceListContent {
       }
 
       Row() {
-        Button('‹')
+        Button('‹').accessibilityText('返回')
           .width(44).height(44).fontSize(22).enabled(this.current > 1 && !this.loading)
           .fontColor(AppTheme.textSoft).backgroundColor(AppTheme.surfaceRaised)
           .border({ width: 1, color: AppTheme.border }).borderRadius(6)
           .onClick(() => this.load(this.current - 1))
         Text(`${this.current} / ${this.totalPages()}  共 ${this.total} 台`)
           .fontSize(12).fontColor(AppTheme.muted).layoutWeight(1).textAlign(TextAlign.Center)
-        Button('›')
+        Button('›').accessibilityText('下一页')
           .width(44).height(44).fontSize(22)
           .enabled(this.current < this.totalPages() && !this.loading)
           .fontColor(AppTheme.textSoft).backgroundColor(AppTheme.surfaceRaised)

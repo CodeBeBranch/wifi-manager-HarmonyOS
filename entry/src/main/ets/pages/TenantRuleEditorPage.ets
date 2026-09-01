@@ -43,7 +43,7 @@ struct TenantRuleEditorPage {
   build() {
     Column({ space: 14 }) {
       Row({ space: 10 }) {
-        Button('‹').width(44).height(44).fontSize(24).backgroundColor(AppTheme.surfaceRaised)
+        Button('‹').accessibilityText('返回').width(44).height(44).fontSize(24).backgroundColor(AppTheme.surfaceRaised)
           .fontColor(AppTheme.textSoft).borderRadius(8).onClick(() => router.back())
         Text(this.ruleId.length === 0 ? '新建规则' : '编辑规则').fontSize(22).fontWeight(FontWeight.Bold)
           .fontColor(AppTheme.text).layoutWeight(1)
@@ -56,11 +56,11 @@ struct TenantRuleEditorPage {
         .onChange((value: string) => this.name = value)
       Row({ space: 8 }) {
         Text('告警级别').fontSize(14).fontColor(AppTheme.textSoft).layoutWeight(1)
-        Button('低').height(36).backgroundColor(this.level === '1' ? AppTheme.primaryStrong : AppTheme.surfaceMuted)
+        Button('低').height(44).backgroundColor(this.level === '1' ? AppTheme.primaryStrong : AppTheme.surfaceMuted)
           .fontColor(this.level === '1' ? AppTheme.primaryText : AppTheme.textSoft).borderRadius(6).onClick(() => this.level = '1')
-        Button('中').height(36).backgroundColor(this.level === '2' ? AppTheme.primaryStrong : AppTheme.surfaceMuted)
+        Button('中').height(44).backgroundColor(this.level === '2' ? AppTheme.primaryStrong : AppTheme.surfaceMuted)
           .fontColor(this.level === '2' ? AppTheme.primaryText : AppTheme.textSoft).borderRadius(6).onClick(() => this.level = '2')
-        Button('高').height(36).backgroundColor(this.level === '3' ? AppTheme.primaryStrong : AppTheme.surfaceMuted)
+        Button('高').height(44).backgroundColor(this.level === '3' ? AppTheme.primaryStrong : AppTheme.surfaceMuted)
           .fontColor(this.level === '3' ? AppTheme.primaryText : AppTheme.textSoft).borderRadius(6).onClick(() => this.level = '3')
       }.width('100%')
       TextArea({ text: this.condition, placeholder: '触发条件' }).width('100%').height(120)

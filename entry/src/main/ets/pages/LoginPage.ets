@@ -301,7 +301,7 @@ struct LoginPage {
                 .alignItems(HorizontalAlign.Start)
                 .layoutWeight(1)
                 Button('使用')
-                  .height(36)
+                  .height(44)
                   .fontSize(13)
                   .fontColor(AppTheme.primary)
                   .backgroundColor(Color.Transparent)
@@ -323,7 +323,7 @@ struct LoginPage {
           .margin({ bottom: 20 })
         }
 
-        Row({ space: 4 }) {
+        Row({ space: 8 }) {
           Button('用户名')
             .layoutWeight(1)
             .height(44)
@@ -369,10 +369,10 @@ struct LoginPage {
           .onChange((value: string) => this.account = value)
 
         if (this.loginType === 'contact') {
-          Row({ space: 4 }) {
+          Row({ space: 8 }) {
             Button('密码登录')
               .layoutWeight(1)
-              .height(40)
+              .height(44)
               .fontSize(13)
               .fontWeight(FontWeight.Medium)
               .fontColor(this.contactLoginType === 'password' ? AppTheme.text : AppTheme.muted)
@@ -381,7 +381,7 @@ struct LoginPage {
               .onClick(() => this.switchContactLoginType('password'))
             Button('验证码登录')
               .layoutWeight(1)
-              .height(40)
+              .height(44)
               .fontSize(13)
               .fontWeight(FontWeight.Medium)
               .fontColor(this.contactLoginType === 'code' ? AppTheme.text : AppTheme.muted)

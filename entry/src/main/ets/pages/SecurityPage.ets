@@ -167,7 +167,7 @@ struct SecurityPage {
               .layoutWeight(1)
             Button('退出其他设备')
               .enabled(!this.working && this.sessions.length > 1)
-              .height(40)
+              .height(44)
               .fontSize(12)
               .fontColor(AppTheme.dangerText)
               .backgroundColor(Color.Transparent)

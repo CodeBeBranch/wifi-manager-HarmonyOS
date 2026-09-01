@@ -212,7 +212,7 @@ struct RegisterPage {
     Scroll() {
       Column() {
         Row() {
-          Button('‹')
+          Button('‹').accessibilityText('返回')
             .width(44)
             .height(44)
             .fontSize(24)
@@ -307,7 +307,7 @@ struct RegisterPage {
             .fontColor(AppTheme.textSoft)
             .width('100%')
             .margin({ top: 18, bottom: 8 })
-          Row({ space: 4 }) {
+            Row({ space: 8 }) {
             Button('邮箱')
               .layoutWeight(1)
               .height(44)

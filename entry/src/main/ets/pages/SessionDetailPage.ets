@@ -108,7 +108,7 @@ struct SessionDetailPage {
   build() {
     Column() {
       Row({ space: 12 }) {
-        Button('‹')
+        Button('‹').accessibilityText('返回')
           .width(44)
           .height(44)
           .fontSize(24)

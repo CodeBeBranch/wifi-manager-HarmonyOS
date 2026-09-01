@@ -312,7 +312,7 @@ struct DeviceCommandPage {
   build() {
     Column() {
       Row({ space: 12 }) {
-        Button('‹')
+        Button('‹').accessibilityText('返回')
           .width(44).height(44).fontSize(24)
           .fontColor(AppTheme.textSoft).backgroundColor(AppTheme.surfaceRaised)
           .border({ width: 1, color: AppTheme.border }).borderRadius(8)
@@ -336,7 +336,7 @@ struct DeviceCommandPage {
 
       Scroll() {
         Column({ space: 14 }) {
-          Row({ space: 6 }) {
+          Row({ space: 8 }) {
             this.modeButton('restart', '重启设备')
             this.modeButton('disconnect', '断开终端')
             this.modeButton('block', '阻断流量')
@@ -519,12 +519,12 @@ struct DeviceCommandPage {
                 }
                 Row({ space: 8 }) {
                   Button('跟踪状态')
-                    .layoutWeight(1).height(38).fontSize(12).fontColor(AppTheme.textSoft)
+                    .layoutWeight(1).height(44).fontSize(12).fontColor(AppTheme.textSoft)
                     .backgroundColor(AppTheme.surfaceRaised)
                     .border({ width: 1, color: AppTheme.border }).borderRadius(6)
                     .onClick(() => this.selectRecord(record))
                   Button('查看详情')
-                    .layoutWeight(1).height(38).fontSize(12).fontColor(AppTheme.primary)
+                    .layoutWeight(1).height(44).fontSize(12).fontColor(AppTheme.primary)
                     .backgroundColor(AppTheme.surfaceRaised)
                     .border({ width: 1, color: AppTheme.border }).borderRadius(6)
                     .onClick(() => this.openRecordDetail(record))

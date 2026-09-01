@@ -45,7 +45,7 @@ struct DeviceCommandDetailPage {
   build() {
     Column() {
       Row({ space: 12 }) {
-        Button('‹').width(44).height(44).fontSize(24)
+        Button('‹').accessibilityText('返回').width(44).height(44).fontSize(24)
           .fontColor(AppTheme.textSoft).backgroundColor(AppTheme.surfaceRaised)
           .border({ width: 1, color: AppTheme.border }).borderRadius(8)
           .onClick(() => router.back())

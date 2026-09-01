@@ -109,7 +109,7 @@ struct TenantBlacklistPage {
   build() {
     Column() {
       Row({ space: 12 }) {
-        Button('‹')
+        Button('‹').accessibilityText('返回')
           .width(44).height(44).fontSize(24)
           .fontColor(AppTheme.textSoft).backgroundColor(AppTheme.surfaceRaised)
           .border({ width: 1, color: AppTheme.border }).borderRadius(6)
@@ -177,7 +177,7 @@ struct TenantBlacklistPage {
             Column({ space: 8 }) {
               Text(this.errorMessage).fontSize(13).fontColor(AppTheme.dangerText)
                 .textAlign(TextAlign.Center)
-              Button('重试').height(40).fontSize(13)
+              Button('重试').height(44).fontSize(13)
                 .fontColor(AppTheme.primaryText).backgroundColor(AppTheme.primaryStrong)
                 .borderRadius(6).onClick(() => this.load())
             }
@@ -202,7 +202,7 @@ struct TenantBlacklistPage {
                 }
                 .alignItems(HorizontalAlign.Start).layoutWeight(1)
                 if (this.writable) {
-                  Button('移除').height(36).fontSize(12).fontColor(AppTheme.dangerText)
+                  Button('移除').height(44).fontSize(12).fontColor(AppTheme.dangerText)
                     .backgroundColor(AppTheme.surfaceRaised)
                     .border({ width: 1, color: AppTheme.danger }).borderRadius(6)
                     .onClick(() => this.confirmRemove(entry))

@@ -699,7 +699,7 @@ struct MainPage {
         .fontColor(AppTheme.text)
         .layoutWeight(1)
       Button(action)
-        .height(40)
+        .height(44)
         .fontSize(12)
         .fontColor(AppTheme.primary)
         .backgroundColor(Color.Transparent)

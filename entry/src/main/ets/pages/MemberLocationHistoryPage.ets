@@ -40,12 +40,12 @@ struct MemberLocationHistoryPage {
   build() {
     Column() {
       Row({ space: 10 }) {
-        Button('‹').width(44).height(44).fontSize(24).backgroundColor(AppTheme.surfaceRaised)
+        Button('‹').accessibilityText('返回').width(44).height(44).fontSize(24).backgroundColor(AppTheme.surfaceRaised)
           .fontColor(AppTheme.textSoft).borderRadius(8).onClick(() => router.back())
         Text('位置历史').fontSize(22).fontWeight(FontWeight.Bold)
           .fontColor(AppTheme.text).layoutWeight(1)
         if (this.records.length > 0) {
-          Button(this.confirmingClear ? '确认清除' : '清除').height(40).fontSize(12)
+          Button(this.confirmingClear ? '确认清除' : '清除').height(44).fontSize(12)
             .backgroundColor(AppTheme.dangerSurface).fontColor(AppTheme.dangerText)
             .borderRadius(6).onClick(() => this.confirmingClear ? this.clear() : this.confirmingClear = true)
         }

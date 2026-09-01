@@ -82,7 +82,7 @@ struct PlatformAccountReviewsPage {
             .fontColor([AppTheme.textSoft])
         }
         .width(42)
-        .height(42)
+        .height(44)
         .backgroundColor(AppTheme.surface)
         .border({ width: 1, color: AppTheme.border })
         .onClick(() => router.back())
@@ -102,7 +102,7 @@ struct PlatformAccountReviewsPage {
         this.filterButton('已驳回', 'REJECTED')
       }
       .width('calc(100% - 32vp)')
-      .height(42)
+      .height(50)
       .padding(3)
       .backgroundColor(AppTheme.surfaceMuted)
       .borderRadius(8)
@@ -182,7 +182,7 @@ struct PlatformAccountReviewsPage {
   private filterButton(label: string, value: string) {
     Button(label)
       .layoutWeight(1)
-      .height(36)
+      .height(44)
       .fontSize(13)
       .fontColor(this.statusFilter === value ? AppTheme.text : AppTheme.muted)
       .backgroundColor(this.statusFilter === value ? AppTheme.surface : Color.Transparent)

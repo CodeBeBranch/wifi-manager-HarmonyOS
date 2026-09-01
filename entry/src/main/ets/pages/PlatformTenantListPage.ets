@@ -156,7 +156,7 @@ export struct PlatformTenantListContent {
               .fontColor([AppTheme.primaryText])
           }
           .width(42)
-          .height(42)
+          .height(44)
           .backgroundColor(AppTheme.primaryStrong)
           .onClick(() => router.pushUrl({ url: 'pages/PlatformTenantCreatePage' }))
         }
@@ -193,7 +193,7 @@ export struct PlatformTenantListContent {
           this.filterButton('停用', 'DISABLED')
         }
         .width('100%')
-        .height(42)
+        .height(50)
         .padding(3)
         .backgroundColor(AppTheme.surfaceMuted)
         .borderRadius(8)
@@ -337,7 +337,7 @@ export struct PlatformTenantListContent {
   private filterButton(label: string, value: string) {
     Button(label)
       .layoutWeight(1)
-      .height(36)
+      .height(44)
       .fontSize(13)
       .fontColor(this.statusFilter === value ? AppTheme.text : AppTheme.muted)
       .backgroundColor(this.statusFilter === value ? AppTheme.surface : Color.Transparent)

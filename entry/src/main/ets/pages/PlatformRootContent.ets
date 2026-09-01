@@ -282,7 +282,7 @@ export struct PlatformAccountListContent {
           .alignItems(HorizontalAlign.Start)
           .layoutWeight(1)
           Button('删除审核')
-            .height(40)
+            .height(44)
             .fontSize(13)
             .fontColor(AppTheme.primary)
             .backgroundColor(AppTheme.surface)
@@ -320,7 +320,7 @@ export struct PlatformAccountListContent {
           this.filterButton('停用', 'SUSPENDED')
         }
         .width('100%')
-        .height(42)
+        .height(50)
         .padding(3)
         .backgroundColor(AppTheme.surfaceMuted)
         .borderRadius(8)
@@ -427,7 +427,7 @@ export struct PlatformAccountListContent {
   private filterButton(label: string, value: string) {
     Button(label)
       .layoutWeight(1)
-      .height(36)
+      .height(44)
       .fontSize(13)
       .fontColor(this.statusFilter === value ? AppTheme.text : AppTheme.muted)
       .backgroundColor(this.statusFilter === value ? AppTheme.surface : Color.Transparent)
