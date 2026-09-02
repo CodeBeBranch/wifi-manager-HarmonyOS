@@ -98,5 +98,73 @@ One complete `hm1-device-audit.ps1 -Hm8Only` run passed 211 checks:
 
 ## Remaining gaps
 
-- HM-8B HTTPS, Cookie, WebSocket, Gateway, real tenant isolation, real ESP32,
-  and production Repository integration remain `REAL_PENDING`.
+- HM-8B live HTTPS, Cookie, WebSocket, Gateway, real tenant isolation, real
+  ESP32, and production-environment verification remain `REAL_PENDING`.
+
+## HM-8B client contract preparation
+
+Run date: 2026-09-01.
+
+The backend services and environments exist, but they are not yet stable enough
+for full end-to-end integration. Client work therefore proceeded contract-first
+without claiming live integration:
+
+- HM-5 now has real wire DTOs and Repository calls for products, member
+  entitlement, purchases, usage logs, orders, payments, refunds, refund review,
+  location consent, and owned location history.
+- Product codes, order numbers, payment numbers, refund numbers, and purchase
+  IDs remain string business identifiers from the backend. The client no longer
+  fabricates numeric IDs for those domains.
+- Backend cent amounts and duration entitlements are mapped explicitly. HM-5
+  pages display a duration/quota label instead of assuming every real
+  entitlement is measured in gigabytes.
+- HM-6 now has real mappings and calls for tenant location records and circular
+  geofence list/detail/create/update/toggle/delete/event flows.
+- HM-6 track, stay, heat-map, GIS aggregate, and analytics methods remain
+  capability-local `REAL_API_PENDING` because their backend queries do not yet
+  provide the required tenant boundary.
+- HM-7 has an explicit per-capability Real route table. Entitlement delegates to
+  HM-5; audit is marked `TENANT_BOUNDARY_PENDING`; Marketplace, Support, and AI
+  are marked `PUBLIC_API_PENDING` because their service and persistence layers
+  exist but stable public Controllers and Gateway routes are not yet available.
+- Demo and Real selection remains in `RepositoryFactory`; no Real error falls
+  back to Demo data.
+
+### Unified Real API catalog
+
+The replaceable integration contract is maintained outside the application
+repository at:
+
+`F:\MyProject\summary\wifi-manager-HarmonyOS\15-harmony-real-api-catalog.json`
+
+The catalog is the single source for the Gateway origin, alert WebSocket path,
+service-port reference, and public API paths. It currently contains 10 services
+and 124 endpoint records:
+
+- `CURRENT`: 82 source-proven public contracts.
+- `PARTIAL`: 12 public contracts with a known capability limitation.
+- `PREDICTED`: 30 replaceable defaults for backend surfaces that are not yet
+  stable.
+- Duplicate keys: 0.
+- `/internal/**` paths exposed to the mobile client: 0.
+- Catalog SHA-256:
+  `ABFE437F99A2FA06272B63F30F09F0D7FDFAAF5EFD25F0F6E49216DCBE9FD117`.
+
+`tools/sync-real-api-catalog.ps1` validates and generates
+`entry/src/main/ets/config/RealApiCatalog.ets`. Real repositories use generated
+keys instead of embedding endpoint strings. When backend contracts stabilize,
+update the external catalog and run the sync script; Repository code only needs
+changes when the wire schema or capability semantics change.
+
+Verification for this contract-preparation change:
+
+- Full ArkTS suite: 100 run, 100 pass, 0 failure, 0 error, 0 ignored.
+- Signed `assembleHap`: `BUILD SUCCESSFUL` with DevEco JBR 21.0.8.
+- `verify-app`: HAP Signing Block v3, code signature, and SHA-256 digest passed.
+- `verify-profile`: `verifiedPassed=true`, profile type `debug`, bundleName
+  `com.plagod.WiFiEdgeManager`.
+- Signed HAP: 4,165,969 bytes.
+- Signed HAP SHA-256:
+  `5B7A002E66466C4BEE1091303B3770651C50B4576C05C77610B159E7A3142378`.
+- No backend, Gateway, ESP32, or device integration run was performed.
+- No device system setting was read or changed.

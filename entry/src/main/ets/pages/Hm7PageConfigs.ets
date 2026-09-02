@@ -43,8 +43,6 @@ export function hm7PageConfig(pageId: string): Hm7PageConfig {
     'LIST', '没有运行任务', 'pages/PlatformRuntimeJobDetailPage', '', '', '', false)
   if (pageId === 'P120') return config(pageId, '平台审计', '平台治理', 'AUDIT', 'PLATFORM',
     'LIST', '没有审计记录', 'pages/PlatformAuditDetailPage', '', '', '', true)
-  if (pageId === 'P122') return config(pageId, 'SaaS 套餐编辑', '平台服务', 'SAAS', 'PLATFORM',
-    'EDITOR', '套餐暂不可用', '', '', '', '', false)
   if (pageId === 'P123') return config(pageId, '订阅详情', '订阅管理', 'SAAS', 'PLATFORM',
     'DETAIL', '订阅不存在', '', '', '续期', '停用', false)
   if (pageId === 'P124') return config(pageId, '商品详情', 'Marketplace', 'MARKETPLACE', 'PLATFORM',

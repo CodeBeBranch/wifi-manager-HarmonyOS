@@ -1,4 +1,5 @@
 import http from '@ohos.net.http'
+import { realApiPath, resolveRealApiPath } from '../config/RealApiCatalog'
 import { ApiError, ApiSuccess } from '../model/ApiModels'
 import {
   AlertSocketCredentials,
@@ -175,7 +176,7 @@ export class SessionStore {
       return snapshot
     }
     return this.switchContext(
-      `/auth/platform-context/tenants/${encodeURIComponent(tenantId)}`,
+      resolveRealApiPath('workspace.platformTenant', ['tenantId'], [tenantId]),
       JSON.stringify({ reason: reason.trim() }),
       'PLATFORM_TENANT',
       tenantId
@@ -198,7 +199,7 @@ export class SessionStore {
       this.publish()
       return snapshot
     }
-    return this.switchContext('/auth/platform-context', undefined, 'PLATFORM', '')
+    return this.switchContext(realApiPath('workspace.platform'), undefined, 'PLATFORM', '')
   }
 
   async restoreWorkspaceSnapshot(snapshot: SessionSnapshot, reason: string): Promise<SessionSnapshot> {

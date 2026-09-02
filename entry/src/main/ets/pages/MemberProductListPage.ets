@@ -80,7 +80,7 @@ struct MemberProductListPage {
                 Text(product.description).fontSize(13).fontColor(AppTheme.textSoft)
                   .width('100%').maxLines(2)
                 Row() {
-                  Text(product.quotaGb > 0 ? `${product.quotaGb} GB` : '不限量')
+                  Text(product.quotaLabel)
                     .fontSize(12).fontColor(AppTheme.muted).layoutWeight(1)
                   Button('购买').height(44).fontSize(13).backgroundColor(AppTheme.primaryStrong)
                     .fontColor(AppTheme.primaryText).borderRadius(6).onClick(() => this.buy(product))

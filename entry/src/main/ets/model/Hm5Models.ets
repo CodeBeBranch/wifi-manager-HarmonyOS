@@ -5,6 +5,7 @@ export type Hm5RefundStatus = 'PENDING' | 'APPROVED' | 'REJECTED'
 export interface MemberSummary {
   entitlementName: string
   remainingGb: number
+  remainingLabel: string
   activeConnections: number
   pendingOrders: number
   unreadNotices: number
@@ -15,22 +16,25 @@ export interface MemberEntitlement {
   name: string
   mode: string
   remainingGb: number
+  remainingLabel: string
   expiresAt: string
   status: string
 }
 
 export interface MemberProduct {
-  id: number
+  id: string
   name: string
   description: string
   mode: string
   quotaGb: number
+  quotaLabel: string
   validityDays: number
   price: number
 }
 
 export interface MemberPurchase {
-  id: number
+  id: string
+  orderId: string
   productName: string
   amount: number
   purchasedAt: string
@@ -46,8 +50,8 @@ export interface MemberUsageRecord {
 }
 
 export interface MemberOrder {
-  id: number
-  productId: number
+  id: string
+  productId: string
   productName: string
   amount: number
   status: Hm5OrderStatus
@@ -56,8 +60,8 @@ export interface MemberOrder {
 }
 
 export interface MemberPayment {
-  id: number
-  orderId: number
+  id: string
+  orderId: string
   amount: number
   status: Hm5PaymentStatus
   paymentRequestId: string
@@ -65,8 +69,8 @@ export interface MemberPayment {
 }
 
 export interface MemberRefund {
-  id: number
-  orderId: number
+  id: string
+  orderId: string
   productName: string
   amount: number
   reason: string

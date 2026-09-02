@@ -1,4 +1,5 @@
 import http from '@ohos.net.http'
+import { realApiPath, resolveRealApiPath } from '../config/RealApiCatalog'
 import {
   AlertEvent,
   AlertPageResult,
@@ -20,7 +21,7 @@ class AlertRepository {
     params = addQuery(params, 'mac', query.mac.trim().toUpperCase())
     const response = await sessionStore.authorizedRequest<AlertPageResult>(
       http.RequestMethod.GET,
-      `/admin/alerts${params}`
+      `${realApiPath('alerts.list')}${params}`
     )
     return response.data
   }
@@ -28,7 +29,7 @@ class AlertRepository {
   async detail(id: number): Promise<AlertEvent> {
     const response = await sessionStore.authorizedRequest<AlertEvent>(
       http.RequestMethod.GET,
-      `/admin/alerts/${id}`
+      resolveRealApiPath('alerts.detail', ['alertId'], [String(id)])
     )
     return response.data
   }
@@ -36,7 +37,7 @@ class AlertRepository {
   async handle(id: number): Promise<void> {
     await sessionStore.authorizedRequest<Object | null>(
       http.RequestMethod.POST,
-      `/admin/alerts/${id}/handle`,
+      resolveRealApiPath('alerts.handle', ['alertId'], [String(id)]),
       undefined,
       'PATCH'
     )

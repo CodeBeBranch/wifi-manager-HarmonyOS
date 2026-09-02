@@ -1,4 +1,5 @@
 import { ApiError } from '../model/ApiModels'
+import { realApiPath } from '../config/RealApiCatalog'
 import { Hm3DemoScenario } from '../model/Hm3Models'
 import {
   Hm7ActionResult,
@@ -44,6 +45,20 @@ function cloneRecord(value: Hm7Record): Hm7Record {
     metricValue: value.metricValue,
     updatedAt: value.updatedAt
   }
+}
+
+function seedIdBase(capability: Hm7Capability): number {
+  if (capability === 'ENTITLEMENT') return 7000
+  if (capability === 'SAAS') return 7100
+  if (capability === 'MARKETPLACE') return 7200
+  if (capability === 'CONTENT') return 7300
+  if (capability === 'SUPPORT') return 7400
+  if (capability === 'AI_REVIEW') return 7500
+  if (capability === 'RUNTIME') return 7600
+  if (capability === 'AUDIT') return 7700
+  if (capability === 'ORGANIZATION') return 7800
+  if (capability === 'MEMBER') return 7900
+  return 8000
 }
 
 function seeds(capability: Hm7Capability, scope: Hm7Scope): Hm7Seed[] {
@@ -215,7 +230,7 @@ function seeds(capability: Hm7Capability, scope: Hm7Scope): Hm7Seed[] {
 export class DemoHm7CapabilityRepository implements Hm7CapabilityRepositoryContract {
   private scenario: Hm3DemoScenario = 'NORMAL'
   private readonly records: Map<string, Hm7Record[]> = new Map<string, Hm7Record[]>()
-  private sequence: number = 7000
+  private sequence: number = 9000
   private requestSequence: number = 1
 
   setScenario(scenario: Hm3DemoScenario): void {
@@ -225,13 +240,22 @@ export class DemoHm7CapabilityRepository implements Hm7CapabilityRepositoryContr
   reset(): void {
     this.scenario = 'NORMAL'
     this.records.clear()
-    this.sequence = 7000
+    this.sequence = 9000
     this.requestSequence = 1
   }
 
   private key(context: Hm7RequestContext, capability: Hm7Capability): string {
     if (context.scope === 'PLATFORM') return `PLATFORM:${capability}`
-    return `${context.tenantId}:${context.scope}:${context.userId}:${capability}`
+    if (context.scope === 'MEMBER') {
+      return `${context.tenantId}:MEMBER:${context.userId}:${capability}`
+    }
+    if (capability === 'ENTITLEMENT') {
+      if (context.subjectUserId === undefined || context.subjectUserId.length === 0) {
+        throw new ApiError('账号权益缺少目标账号', 400, 400, 'ACCOUNT_CONTEXT_REQUIRED')
+      }
+      return `${context.tenantId}:ACCOUNT:${context.subjectUserId}:${capability}`
+    }
+    return `${context.tenantId}:TENANT:${capability}`
   }
 
   private data(context: Hm7RequestContext, capability: Hm7Capability): Hm7Record[] {
@@ -240,12 +264,15 @@ export class DemoHm7CapabilityRepository implements Hm7CapabilityRepositoryContr
     if (existing !== undefined) return existing
     const source = seeds(capability, context.scope)
     const created: Hm7Record[] = []
-    source.forEach((seed: Hm7Seed) => {
+    const idBase = seedIdBase(capability)
+    source.forEach((seed: Hm7Seed, index: number) => {
       created.push({
-        id: this.sequence++,
+        id: idBase + index,
         capability: capability,
         tenantId: context.tenantId,
-        ownerId: context.userId,
+        ownerId: capability === 'ENTITLEMENT'
+          ? context.subjectUserId ?? ''
+          : context.scope === 'MEMBER' ? context.userId : context.tenantId,
         title: seed.title,
         subtitle: seed.subtitle,
         status: seed.status,
@@ -344,7 +371,7 @@ export class DemoHm7CapabilityRepository implements Hm7CapabilityRepositoryContr
     this.guard(context)
     this.guardCapability(capability)
     const source = this.data(context, capability)
-    const found = source.find((item: Hm7Record) => item.id === id) ?? source[0]
+    const found = source.find((item: Hm7Record) => item.id === id)
     if (found === undefined) {
       throw new ApiError('记录不存在', 404, 404, 'HM7_RECORD_NOT_FOUND')
     }
@@ -355,15 +382,21 @@ export class DemoHm7CapabilityRepository implements Hm7CapabilityRepositoryContr
     id: number, input: Hm7RecordInput): Promise<Hm7ActionResult> {
     this.guardWrite(context, capability)
     this.guardCapability(capability)
+    const source = this.data(context, capability)
+    let record = source.find((item: Hm7Record) => item.id === id)
+    if (record === undefined && id !== 0) {
+      throw new ApiError('记录不存在', 404, 404, 'HM7_RECORD_NOT_FOUND')
+    }
     if (input.title.trim().length < 2) {
       throw new ApiError('标题至少需要 2 个字符', 400, 400, 'HM7_TITLE_REQUIRED')
     }
-    const source = this.data(context, capability)
-    let record = source.find((item: Hm7Record) => item.id === id)
     if (record === undefined) {
       record = {
         id: this.sequence++, capability: capability, tenantId: context.tenantId,
-        ownerId: context.userId, title: input.title.trim(), subtitle: input.subtitle.trim(),
+        ownerId: capability === 'ENTITLEMENT'
+          ? context.subjectUserId ?? ''
+          : context.scope === 'MEMBER' ? context.userId : context.tenantId,
+        title: input.title.trim(), subtitle: input.subtitle.trim(),
         status: 'DRAFT', summary: input.subtitle.trim(), detail: input.detail.trim(),
         metricLabel: '状态', metricValue: '草稿', updatedAt: '2026-09-01 11:36'
       }
@@ -383,26 +416,33 @@ export class DemoHm7CapabilityRepository implements Hm7CapabilityRepositoryContr
     this.guardWrite(context, capability)
     this.guardCapability(capability)
     const source = this.data(context, capability)
-    const record = source.find((item: Hm7Record) => item.id === id) ?? source[0]
+    const record = source.find((item: Hm7Record) => item.id === id)
     if (record === undefined) {
       throw new ApiError('记录不存在', 404, 404, 'HM7_RECORD_NOT_FOUND')
     }
-    if (action.includes('购买')) record.status = 'FULFILLING'
-    else if (action.includes('发布')) record.status = 'PUBLISHED'
-    else if (action.includes('上架')) record.status = 'ON_SALE'
-    else if (action.includes('分派')) record.status = 'ASSIGNED'
-    else if (action.includes('驳回')) record.status = 'REJECTED'
-    else if (action.includes('转人工')) record.status = 'MANUAL'
-    else if (action.includes('撤回') || action.includes('停用') || action.includes('下架')) record.status = 'INACTIVE'
-    else if (action.includes('恢复')) record.status = 'RECOVERED'
-    else if (action.includes('已读')) record.status = 'READ'
-    else if (action.includes('关闭') || action.includes('解决')) record.status = 'RESOLVED'
-    else if (action.includes('重新发送')) record.status = 'INVITED'
-    else if (action.includes('发表评论')) {
+    if (action === '购买') record.status = 'FULFILLING'
+    else if (action === '发布') record.status = 'PUBLISHED'
+    else if (action === '上架') record.status = 'ON_SALE'
+    else if (action === '分派工单' || action === '回复并分派') record.status = 'ASSIGNED'
+    else if (action === '驳回并转人工') record.status = 'MANUAL'
+    else if (action === '撤回' || action === '停用' || action === '下架' ||
+      action === '取消转移' || action === '移除成员') record.status = 'INACTIVE'
+    else if (action === '人工恢复') record.status = 'RECOVERED'
+    else if (action === '标记已读') record.status = 'READ'
+    else if (action === '关闭工单' || action === '解决工单') record.status = 'RESOLVED'
+    else if (action === '重新发送') record.status = 'INVITED'
+    else if (action === '发表评论') {
       record.metricValue = String(Number(record.metricValue) + 1)
       record.status = 'PUBLISHED'
     }
-    else record.status = 'ACTIVE'
+    else if (action === '调整权益' || action === '创建奖励订单' ||
+      action === '调整配额' || action === '续期' || action === '处理异常' ||
+      action === '通过复核' || action === '发起转移' ||
+      action === '调整角色' || action === '回复') {
+      record.status = 'ACTIVE'
+    } else {
+      throw new ApiError('操作类型无效', 400, 400, 'HM7_ACTION_INVALID')
+    }
     record.updatedAt = '2026-09-01 11:42'
     return {
       record: cloneRecord(record),
@@ -412,28 +452,78 @@ export class DemoHm7CapabilityRepository implements Hm7CapabilityRepositoryContr
   }
 }
 
+export type Hm7RealRouteState = 'DELEGATED' | 'PUBLIC_API_PENDING' | 'TENANT_BOUNDARY_PENDING'
+
+export interface Hm7RealCapabilityRoute {
+  capability: Hm7Capability
+  state: Hm7RealRouteState
+  owner: string
+  pathPrefix: string
+  reason: string
+}
+
+export function realHm7CapabilityRoute(capability: Hm7Capability): Hm7RealCapabilityRoute {
+  if (capability === 'ENTITLEMENT') {
+    return {
+      capability: capability,
+      state: 'DELEGATED',
+      owner: 'Hm5MemberRepository',
+      pathPrefix: realApiPath('entitlements.orders').replace('/orders', ''),
+      reason: '成员权益、订单、支付和退款由 HM-5 Real Repository 承接'
+    }
+  }
+  if (capability === 'AUDIT') {
+    return {
+      capability: capability,
+      state: 'TENANT_BOUNDARY_PENDING',
+      owner: 'monitor-service',
+      pathPrefix: realApiPath('audits.list'),
+      reason: '当前审计查询仍为全局查询，客户端不得扩大租户可见范围'
+    }
+  }
+  if (capability === 'MARKETPLACE' || capability === 'SUPPORT' || capability === 'AI_REVIEW') {
+    return {
+      capability: capability,
+      state: 'PUBLIC_API_PENDING',
+      owner: capability === 'MARKETPLACE' ? 'marketplace-service'
+        : capability === 'SUPPORT' ? 'support-service' : 'ai-service',
+      pathPrefix: '',
+      reason: '服务层和持久化已存在，等待稳定公开 Controller 与 Gateway 路由'
+    }
+  }
+  return {
+    capability: capability,
+    state: 'PUBLIC_API_PENDING',
+    owner: 'backend',
+    pathPrefix: '',
+    reason: '领域能力已规划，等待与通用 HM-7 页面模型匹配的公开契约'
+  }
+}
+
 export class RealHm7CapabilityRepository implements Hm7CapabilityRepositoryContract {
-  private pending(): ApiError {
-    return new ApiError('真实计划能力接口等待公开契约', 503, 503, 'REAL_API_PENDING')
+  private pending(capability: Hm7Capability): ApiError {
+    const route = realHm7CapabilityRoute(capability)
+    return new ApiError(route.reason, 503, 503,
+      route.state === 'TENANT_BOUNDARY_PENDING' ? 'REAL_TENANT_BOUNDARY_PENDING' : 'REAL_API_PENDING')
   }
 
   async list(_context: Hm7RequestContext, _capability: Hm7Capability,
     _keyword: string, _status: string): Promise<Hm7Record[]> {
-    throw this.pending()
+    throw this.pending(_capability)
   }
 
   async detail(_context: Hm7RequestContext, _capability: Hm7Capability,
     _id: number): Promise<Hm7Record> {
-    throw this.pending()
+    throw this.pending(_capability)
   }
 
   async save(_context: Hm7RequestContext, _capability: Hm7Capability,
     _id: number, _input: Hm7RecordInput): Promise<Hm7ActionResult> {
-    throw this.pending()
+    throw this.pending(_capability)
   }
 
   async act(_context: Hm7RequestContext, _capability: Hm7Capability,
     _id: number, _action: string): Promise<Hm7ActionResult> {
-    throw this.pending()
+    throw this.pending(_capability)
   }
 }

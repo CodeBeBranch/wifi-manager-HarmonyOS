@@ -33,6 +33,7 @@ export interface TenantUpdateInput {
 
 export interface PlatformTenantMember {
   memberId: string
+  tenantId?: string
   userId: string
   username: string
   nickname: string
@@ -101,6 +102,18 @@ export interface SaasPlanPage {
   records: SaasPlan[]
 }
 
+export interface SaasPlanInput {
+  planCode: string
+  name: string
+  version: string
+  status: string
+  priceLabel: string
+  billingCycle: string
+  deviceLimit: number
+  memberLimit: number
+  features: string[]
+}
+
 export interface Hm2DemoState {
   tenants: PlatformTenant[]
   members: PlatformTenantMember[]
@@ -109,6 +122,7 @@ export interface Hm2DemoState {
   plans: SaasPlan[]
   nextTenantSequence: number
   nextReviewSequence: number
+  nextPlanSequence: number
 }
 
 export interface PlatformTenantDetailParams {
@@ -116,6 +130,11 @@ export interface PlatformTenantDetailParams {
 }
 
 export interface PlatformAccountDetailParams {
+  userId: string
+}
+
+export interface PlatformAccountEntitlementParams {
+  tenantId: string
   userId: string
 }
 

@@ -8,11 +8,14 @@ import {
   Hm7RequestContext
 } from '../model/Hm7Models'
 import { repositoryFactory } from '../repository/RepositoryFactory'
+import { platformAdminRepositoryFactory } from '../repository/PlatformAdminRepository'
 import { sessionStore } from '../session/SessionStore'
 import { AppTheme } from '../ui/AppTheme'
 
 interface Hm7RouteParams {
   id?: string
+  tenantId?: string
+  userId?: string
 }
 
 @Component
@@ -35,11 +38,18 @@ export struct Hm7FeaturePage {
   @State notice: string = ''
   @State confirmAction: string = ''
   private recordId: number = 0
+  private routeIdProvided: boolean = false
+  private routeTenantId: string = ''
+  private routeUserId: string = ''
 
   aboutToAppear(): void {
     const params = router.getParams() as Hm7RouteParams
-    this.recordId = Number(params?.id ?? '0')
-    if (!Number.isFinite(this.recordId)) this.recordId = 0
+    const rawId = params?.id
+    this.routeIdProvided = rawId !== undefined && rawId.length > 0
+    this.recordId = this.routeIdProvided ? Number(rawId) : 0
+    if (!Number.isInteger(this.recordId)) this.recordId = -1
+    this.routeTenantId = params?.tenantId ?? ''
+    this.routeUserId = params?.userId ?? ''
     this.load()
   }
 
@@ -49,10 +59,87 @@ export struct Hm7FeaturePage {
       scope: this.config.scope,
       role: snapshot.role,
       userId: snapshot.userId,
-      tenantId: snapshot.context?.tenantId ?? '',
+      subjectUserId: this.config.pageId === 'P108' ? this.routeUserId : undefined,
+      tenantId: this.config.pageId === 'P108'
+        ? this.routeTenantId
+        : snapshot.context?.tenantId ?? '',
       tenantRole: snapshot.context?.tenantRole ?? '',
-      contextType: snapshot.context?.contextType ?? ''
+      contextType: this.config.pageId === 'P108'
+        ? 'PLATFORM_TENANT'
+        : snapshot.context?.contextType ?? ''
     }
+  }
+
+  private async validateAccountEntitlementContext(): Promise<string> {
+    if (this.config.pageId !== 'P108') return ''
+    const snapshot = sessionStore.getSnapshot()
+    const fromPlatform = snapshot.context?.contextType === 'PLATFORM'
+    const fromManagedTenant = snapshot.context?.contextType === 'PLATFORM_TENANT' &&
+      snapshot.context?.tenantId === this.routeTenantId
+    if (!snapshot.authenticated || snapshot.role !== 0 ||
+      (!fromPlatform && !fromManagedTenant) ||
+      this.routeTenantId.length === 0 || this.routeUserId.length === 0) {
+      throw new ApiError('账号权益上下文无效', 400, 400, 'ACCOUNT_ENTITLEMENT_CONTEXT_INVALID')
+    }
+    const repository = platformAdminRepositoryFactory.current()
+    const account = await repository.accountDetail(this.routeUserId)
+    if (account.status !== 'ACTIVE') {
+      throw new ApiError('所选账号当前不可用', 409, 409, 'ACCOUNT_ENTITLEMENT_ACCOUNT_INACTIVE')
+    }
+    const tenants = await repository.accountTenants(this.routeUserId)
+    const tenant = tenants.find((item): boolean => item.tenantId === this.routeTenantId)
+    if (tenant === undefined) {
+      throw new ApiError('账号不属于所选组织', 404, 404, 'ACCOUNT_TENANT_NOT_FOUND')
+    }
+    if (tenant.status !== 'ACTIVE') {
+      throw new ApiError('所选组织当前不可用', 409, 409, 'ACCOUNT_TENANT_INACTIVE')
+    }
+    return `${tenant.name} (${tenant.tenantCode}) · ${account.nickname} (${account.username})`
+  }
+
+  private requireSingleRecord(records: Hm7Record[], errorKey: string, emptyMessage: string): Hm7Record {
+    if (records.length === 0) {
+      throw new ApiError(emptyMessage, 404, 404, errorKey)
+    }
+    if (records.length > 1) {
+      throw new ApiError('页面数据存在多个候选记录', 409, 409, `${errorKey}_AMBIGUOUS`)
+    }
+    const record = records.find((_item: Hm7Record): boolean => true)
+    if (record === undefined) {
+      throw new ApiError(emptyMessage, 404, 404, errorKey)
+    }
+    return record
+  }
+
+  private async loadKnownSingleton(): Promise<Hm7Record> {
+    const records = await repositoryFactory.hm7Capability().list(
+      this.context(), this.config.capability, '', '')
+    if (this.config.pageId === 'P213') {
+      return this.requireSingleRecord(records, 'ORGANIZATION_NOT_FOUND', '组织资料不存在')
+    }
+    if (this.config.pageId === 'P112' || this.config.pageId === 'P217' ||
+      this.config.pageId === 'P218') {
+      const active = records.filter((item: Hm7Record): boolean => item.status === 'ACTIVE')
+      return this.requireSingleRecord(active, 'ACTIVE_SUBSCRIPTION_NOT_FOUND', '当前订阅不存在')
+    }
+    throw new ApiError('页面缺少记录标识', 400, 400, 'RECORD_ID_REQUIRED')
+  }
+
+  private async loadAccountEntitlement(): Promise<Hm7Record> {
+    const contextLabel = await this.validateAccountEntitlementContext()
+    const records = await repositoryFactory.hm7Capability().list(
+      this.context(), this.config.capability, '', '')
+    const owned = records.filter((item: Hm7Record): boolean =>
+      item.tenantId === this.routeTenantId &&
+      item.ownerId === this.routeUserId &&
+      item.status === 'ACTIVE')
+    const entitlement = this.requireSingleRecord(
+      owned,
+      'ACCOUNT_ENTITLEMENT_NOT_FOUND',
+      '账号权益不存在'
+    )
+    entitlement.subtitle = contextLabel
+    return entitlement
   }
 
   private writable(): boolean {
@@ -94,7 +181,6 @@ export struct Hm7FeaturePage {
 
   private editorReturnRoute(): string {
     if (this.config.pageId === 'P116') return 'pages/PlatformAnnouncementListPage'
-    if (this.config.pageId === 'P122') return 'pages/PlatformSaasPlanListPage'
     if (this.config.pageId === 'P125') return 'pages/PlatformMarketplaceProductListPage'
     if (this.config.pageId === 'P239') return 'pages/TenantAnnouncementListPage'
     if (this.config.pageId === 'P240') return 'pages/TenantSupportListPage'
@@ -107,16 +193,26 @@ export struct Hm7FeaturePage {
     this.error = ''
     this.notice = ''
     try {
-      if (this.config.mode === 'LIST') {
+      if (this.config.pageId === 'P108') {
+        const entitlement = await this.loadAccountEntitlement()
+        this.record = entitlement
+        this.recordId = entitlement.id
+      } else if (this.config.mode === 'LIST') {
         this.records = await repositoryFactory.hm7Capability().list(
           this.context(), this.config.capability, this.keyword, this.statusFilter)
       } else if (this.config.mode === 'DETAIL') {
-        this.record = await repositoryFactory.hm7Capability().detail(
-          this.context(), this.config.capability, this.recordId)
-      } else if (this.recordId > 0 || this.config.capability === 'ORGANIZATION') {
-        this.record = await repositoryFactory.hm7Capability().detail(
-          this.context(), this.config.capability, this.recordId)
-        if (this.config.capability === 'ORGANIZATION') this.recordId = this.record.id
+        this.record = this.routeIdProvided
+          ? await repositoryFactory.hm7Capability().detail(
+            this.context(), this.config.capability, this.recordId)
+          : await this.loadKnownSingleton()
+        this.recordId = this.record.id
+      } else if ((this.routeIdProvided && this.recordId !== 0) ||
+        (!this.routeIdProvided && this.config.pageId === 'P213')) {
+        this.record = this.routeIdProvided
+          ? await repositoryFactory.hm7Capability().detail(
+            this.context(), this.config.capability, this.recordId)
+          : await this.loadKnownSingleton()
+        this.recordId = this.record.id
         this.titleValue = this.record.title
         this.subtitleValue = this.record.subtitle
         this.detailValue = this.record.detail
@@ -139,6 +235,16 @@ export struct Hm7FeaturePage {
       url: this.config.editorRoute,
       params: { id: item === null ? '0' : String(item.id) }
     })
+  }
+
+  private openRelated(): void {
+    const route = this.relatedRoute()
+    if (route.length === 0) return
+    if (this.record !== null) {
+      router.pushUrl({ url: route, params: { id: String(this.record.id) } })
+      return
+    }
+    router.pushUrl({ url: route })
   }
 
   private requestAction(action: string): void {
@@ -189,6 +295,10 @@ export struct Hm7FeaturePage {
     }
   }
 
+  private returnToOrigin(): void {
+    router.back()
+  }
+
   private statusLabel(value: string): string {
     if (value === 'ACTIVE') return '生效中'
     if (value === 'DRAFT') return '草稿'
@@ -214,7 +324,7 @@ export struct Hm7FeaturePage {
       Row({ space: 10 }) {
         Button('‹').accessibilityText('返回').width(44).height(44).fontSize(24)
           .backgroundColor(AppTheme.surfaceRaised).fontColor(AppTheme.textSoft)
-          .borderRadius(8).onClick(() => router.back())
+          .borderRadius(8).onClick(() => this.returnToOrigin())
         Column({ space: 2 }) {
           Text(this.config.eyebrow).fontSize(11).fontColor(AppTheme.primary)
           Text(this.config.title).fontSize(21).fontWeight(FontWeight.Bold)
@@ -267,7 +377,7 @@ export struct Hm7FeaturePage {
         Button(this.relatedLabel()).width('100%').height(44)
           .backgroundColor(AppTheme.surface).fontColor(AppTheme.primary)
           .border({ width: 1, color: AppTheme.border }).borderRadius(8)
-          .onClick(() => router.pushUrl({ url: this.relatedRoute() }))
+          .onClick(() => this.openRelated())
       }
       Row({ space: 8 }) {
         this.filterButton('全部', '')
@@ -354,7 +464,7 @@ export struct Hm7FeaturePage {
               Button(this.relatedLabel()).width('100%').height(44)
                 .backgroundColor(AppTheme.surface).fontColor(AppTheme.primary)
                 .border({ width: 1, color: AppTheme.border }).borderRadius(8)
-                .onClick(() => router.pushUrl({ url: this.relatedRoute() }))
+                .onClick(() => this.openRelated())
             }
           } else {
             if (this.config.editorRoute.length > 0) {
@@ -416,7 +526,7 @@ export struct Hm7FeaturePage {
             Button(this.relatedLabel()).width('100%').height(44)
               .backgroundColor(AppTheme.surface).fontColor(AppTheme.primary)
               .border({ width: 1, color: AppTheme.border }).borderRadius(8)
-              .onClick(() => router.pushUrl({ url: this.relatedRoute() }))
+              .onClick(() => this.openRelated())
           }
         } else {
           if (this.relatedRoute().length > 0) {

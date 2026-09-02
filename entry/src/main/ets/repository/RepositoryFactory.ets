@@ -91,21 +91,21 @@ export interface Hm5MemberRepositoryContract {
   purchases(): Promise<MemberPurchase[]>
   usage(): Promise<MemberUsageRecord[]>
   orders(): Promise<MemberOrder[]>
-  orderDetail(id: number): Promise<MemberOrder>
-  createOrder(productId: number): Promise<MemberOrder>
-  cancelOrder(id: number): Promise<MemberOrder>
-  paymentForOrder(orderId: number): Promise<MemberPayment | null>
-  createPayment(orderId: number): Promise<MemberPayment>
+  orderDetail(id: string): Promise<MemberOrder>
+  createOrder(productId: string): Promise<MemberOrder>
+  cancelOrder(id: string): Promise<MemberOrder>
+  paymentForOrder(orderId: string): Promise<MemberPayment | null>
+  createPayment(orderId: string): Promise<MemberPayment>
   refunds(): Promise<MemberRefund[]>
-  refundDetail(id: number): Promise<MemberRefund>
-  applyRefund(orderId: number, reason: string): Promise<MemberRefund>
+  refundDetail(id: string): Promise<MemberRefund>
+  applyRefund(orderId: string, reason: string): Promise<MemberRefund>
   locationPermission(): Promise<MemberLocationPermission>
   setLocationPermission(granted: boolean): Promise<MemberLocationPermission>
   locationHistory(): Promise<MemberLocationRecord[]>
   clearLocationHistory(): Promise<void>
   tenantRefunds(): Promise<MemberRefund[]>
-  tenantRefundDetail(id: number): Promise<MemberRefund>
-  reviewTenantRefund(id: number, approved: boolean, note: string): Promise<MemberRefund>
+  tenantRefundDetail(id: string): Promise<MemberRefund>
+  reviewTenantRefund(id: string, approved: boolean, note: string): Promise<MemberRefund>
 }
 
 export interface Hm6LocationRepositoryContract {
@@ -294,24 +294,24 @@ class DemoHm5MemberAdapter implements Hm5MemberRepositoryContract {
   async purchases(): Promise<MemberPurchase[]> { return this.data.purchases(currentMemberKey()) }
   async usage(): Promise<MemberUsageRecord[]> { return this.data.usage(currentMemberKey()) }
   async orders(): Promise<MemberOrder[]> { return this.data.orders(currentMemberKey()) }
-  async orderDetail(id: number): Promise<MemberOrder> { return this.data.orderDetail(currentMemberKey(), id) }
-  async createOrder(productId: number): Promise<MemberOrder> {
+  async orderDetail(id: string): Promise<MemberOrder> { return this.data.orderDetail(currentMemberKey(), id) }
+  async createOrder(productId: string): Promise<MemberOrder> {
     return this.data.createOrder(currentMemberKey(), productId, hasAuthority('ORDER_SELF_WRITE'))
   }
-  async cancelOrder(id: number): Promise<MemberOrder> {
+  async cancelOrder(id: string): Promise<MemberOrder> {
     return this.data.cancelOrder(currentMemberKey(), id, hasAuthority('ORDER_SELF_WRITE'))
   }
-  async paymentForOrder(orderId: number): Promise<MemberPayment | null> {
+  async paymentForOrder(orderId: string): Promise<MemberPayment | null> {
     return this.data.paymentForOrder(currentMemberKey(), orderId)
   }
-  async createPayment(orderId: number): Promise<MemberPayment> {
+  async createPayment(orderId: string): Promise<MemberPayment> {
     return this.data.createPayment(currentMemberKey(), orderId, hasAuthority('PAYMENT_SELF_WRITE'))
   }
   async refunds(): Promise<MemberRefund[]> { return this.data.refunds(currentMemberKey()) }
-  async refundDetail(id: number): Promise<MemberRefund> {
+  async refundDetail(id: string): Promise<MemberRefund> {
     return this.data.refundDetail(currentMemberKey(), id)
   }
-  async applyRefund(orderId: number, reason: string): Promise<MemberRefund> {
+  async applyRefund(orderId: string, reason: string): Promise<MemberRefund> {
     return this.data.applyRefund(currentMemberKey(), orderId, reason, hasAuthority('REFUND_SELF_WRITE'))
   }
   async locationPermission(): Promise<MemberLocationPermission> {
@@ -330,11 +330,11 @@ class DemoHm5MemberAdapter implements Hm5MemberRepositoryContract {
     requireAuthority('REFUND_REVIEW')
     return this.data.tenantRefunds(currentTenantId())
   }
-  async tenantRefundDetail(id: number): Promise<MemberRefund> {
+  async tenantRefundDetail(id: string): Promise<MemberRefund> {
     requireAuthority('REFUND_REVIEW')
     return this.data.tenantRefundDetail(currentTenantId(), id)
   }
-  async reviewTenantRefund(id: number, approved: boolean, note: string): Promise<MemberRefund> {
+  async reviewTenantRefund(id: string, approved: boolean, note: string): Promise<MemberRefund> {
     return this.data.reviewTenantRefund(currentTenantId(), id, approved, note,
       hasAuthority('REFUND_REVIEW'))
   }
@@ -349,16 +349,16 @@ class RealHm5MemberAdapter implements Hm5MemberRepositoryContract {
   async purchases(): Promise<MemberPurchase[]> { return this.real.purchases() }
   async usage(): Promise<MemberUsageRecord[]> { return this.real.usage() }
   async orders(): Promise<MemberOrder[]> { return this.real.orders() }
-  async orderDetail(id: number): Promise<MemberOrder> { return this.real.orderDetail(id) }
-  async createOrder(productId: number): Promise<MemberOrder> { return this.real.createOrder(productId) }
-  async cancelOrder(id: number): Promise<MemberOrder> { return this.real.cancelOrder(id) }
-  async paymentForOrder(orderId: number): Promise<MemberPayment | null> {
+  async orderDetail(id: string): Promise<MemberOrder> { return this.real.orderDetail(id) }
+  async createOrder(productId: string): Promise<MemberOrder> { return this.real.createOrder(productId) }
+  async cancelOrder(id: string): Promise<MemberOrder> { return this.real.cancelOrder(id) }
+  async paymentForOrder(orderId: string): Promise<MemberPayment | null> {
     return this.real.paymentForOrder(orderId)
   }
-  async createPayment(orderId: number): Promise<MemberPayment> { return this.real.createPayment(orderId) }
+  async createPayment(orderId: string): Promise<MemberPayment> { return this.real.createPayment(orderId) }
   async refunds(): Promise<MemberRefund[]> { return this.real.refunds() }
-  async refundDetail(id: number): Promise<MemberRefund> { return this.real.refundDetail(id) }
-  async applyRefund(orderId: number, reason: string): Promise<MemberRefund> {
+  async refundDetail(id: string): Promise<MemberRefund> { return this.real.refundDetail(id) }
+  async applyRefund(orderId: string, reason: string): Promise<MemberRefund> {
     return this.real.applyRefund(orderId, reason)
   }
   async locationPermission(): Promise<MemberLocationPermission> {
@@ -370,8 +370,8 @@ class RealHm5MemberAdapter implements Hm5MemberRepositoryContract {
   async locationHistory(): Promise<MemberLocationRecord[]> { return this.real.locationHistory() }
   async clearLocationHistory(): Promise<void> { return this.real.clearLocationHistory() }
   async tenantRefunds(): Promise<MemberRefund[]> { return this.real.tenantRefunds() }
-  async tenantRefundDetail(id: number): Promise<MemberRefund> { return this.real.tenantRefundDetail(id) }
-  async reviewTenantRefund(id: number, approved: boolean, note: string): Promise<MemberRefund> {
+  async tenantRefundDetail(id: string): Promise<MemberRefund> { return this.real.tenantRefundDetail(id) }
+  async reviewTenantRefund(id: string, approved: boolean, note: string): Promise<MemberRefund> {
     return this.real.reviewTenantRefund(id, approved, note)
   }
 }

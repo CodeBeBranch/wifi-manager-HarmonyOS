@@ -17,9 +17,9 @@ struct TenantRefundDetailPage {
 
   aboutToAppear(): void { this.load() }
 
-  private refundId(): number {
+  private refundId(): string {
     const params = router.getParams() as TenantRefundParams | null
-    return Number(params?.id ?? '0')
+    return params?.id ?? ''
   }
 
   private async load(): Promise<void> {

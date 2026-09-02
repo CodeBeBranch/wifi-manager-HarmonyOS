@@ -10,14 +10,14 @@ interface OrderCreateParams { productId?: string }
 @Component
 struct MemberOrderCreatePage {
   @State products: MemberProduct[] = []
-  @State selectedProductId: number = 0
+  @State selectedProductId: string = ''
   @State loading: boolean = true
   @State saving: boolean = false
   @State error: string = ''
 
   aboutToAppear(): void {
     const params = router.getParams() as OrderCreateParams | null
-    this.selectedProductId = Number(params?.productId ?? '0')
+    this.selectedProductId = params?.productId ?? ''
     this.load()
   }
 
@@ -26,7 +26,7 @@ struct MemberOrderCreatePage {
     this.error = ''
     try {
       this.products = await repositoryFactory.hm5Member().products('')
-      if (this.selectedProductId === 0 && this.products.length > 0) {
+      if (this.selectedProductId.length === 0 && this.products.length > 0) {
         this.selectedProductId = this.products[0].id
       }
     } catch (error) {
@@ -37,7 +37,7 @@ struct MemberOrderCreatePage {
   }
 
   private async create(): Promise<void> {
-    if (this.selectedProductId === 0) {
+    if (this.selectedProductId.length === 0) {
       this.error = '请选择产品'
       return
     }

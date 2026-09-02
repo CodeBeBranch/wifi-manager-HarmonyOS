@@ -1,4 +1,5 @@
 import http from '@ohos.net.http'
+import { resolveRealApiPath } from '../config/RealApiCatalog'
 import { ApiError } from '../model/ApiModels'
 import {
   WifiConfigStageRequest,
@@ -16,7 +17,7 @@ class WifiConfigRepository {
     }
     const response = await sessionStore.authorizedRequest<WifiConfigTask>(
       http.RequestMethod.POST,
-      `/admin/devices/${encodeURIComponent(deviceCode)}/wifi-config/candidate`,
+      resolveRealApiPath('devices.wifiCandidate', ['deviceCode'], [deviceCode]),
       JSON.stringify(body)
     )
     return this.validateTask(response.data, deviceCode, '', response.requestId)
@@ -25,7 +26,7 @@ class WifiConfigRepository {
   async latest(deviceCode: string): Promise<WifiConfigTask | null> {
     const response = await sessionStore.authorizedRequest<WifiConfigTask | null>(
       http.RequestMethod.GET,
-      `/admin/devices/${encodeURIComponent(deviceCode)}/wifi-config/latest`
+      resolveRealApiPath('devices.wifiLatest', ['deviceCode'], [deviceCode])
     )
     if (response.data === null) return null
     return this.validateTask(response.data, deviceCode, '', response.requestId)
@@ -34,7 +35,8 @@ class WifiConfigRepository {
   async find(deviceCode: string, requestId: string): Promise<WifiConfigTask> {
     const response = await sessionStore.authorizedRequest<WifiConfigTask>(
       http.RequestMethod.GET,
-      `/admin/devices/${encodeURIComponent(deviceCode)}/wifi-config/${encodeURIComponent(requestId)}`
+      resolveRealApiPath(
+        'devices.wifiTask', ['deviceCode', 'requestId'], [deviceCode, requestId])
     )
     return this.validateTask(response.data, deviceCode, requestId, response.requestId)
   }

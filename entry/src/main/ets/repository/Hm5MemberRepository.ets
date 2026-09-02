@@ -1,3 +1,6 @@
+import http from '@ohos.net.http'
+import util from '@ohos.util'
+import { realApiPath, resolveRealApiPath } from '../config/RealApiCatalog'
 import { ApiError } from '../model/ApiModels'
 import { Hm3DemoScenario } from '../model/Hm3Models'
 import {
@@ -12,6 +15,7 @@ import {
   MemberSummary,
   MemberUsageRecord
 } from '../model/Hm5Models'
+import { sessionStore } from '../session/SessionStore'
 
 interface MemberData {
   entitlement: MemberEntitlement
@@ -27,16 +31,17 @@ interface MemberData {
 
 function cloneEntitlement(value: MemberEntitlement): MemberEntitlement {
   return { id: value.id, name: value.name, mode: value.mode, remainingGb: value.remainingGb,
-    expiresAt: value.expiresAt, status: value.status }
+    remainingLabel: value.remainingLabel, expiresAt: value.expiresAt, status: value.status }
 }
 
 function cloneProduct(value: MemberProduct): MemberProduct {
   return { id: value.id, name: value.name, description: value.description, mode: value.mode,
-    quotaGb: value.quotaGb, validityDays: value.validityDays, price: value.price }
+    quotaGb: value.quotaGb, quotaLabel: value.quotaLabel,
+    validityDays: value.validityDays, price: value.price }
 }
 
 function clonePurchase(value: MemberPurchase): MemberPurchase {
-  return { id: value.id, productName: value.productName, amount: value.amount,
+  return { id: value.id, orderId: value.orderId, productName: value.productName, amount: value.amount,
     purchasedAt: value.purchasedAt, requestId: value.requestId }
 }
 
@@ -71,18 +76,19 @@ function createMemberData(): MemberData {
   return {
     entitlement: {
       id: 501, name: '畅连月包', mode: '按流量', remainingGb: 18.6,
+      remainingLabel: '18.6 GB',
       expiresAt: '2026-09-30 23:59', status: 'ACTIVE'
     },
     products: [
-      { id: 601, name: '轻量流量包', description: '适合临时办公和移动接入',
-        mode: '按流量', quotaGb: 10, validityDays: 30, price: 19.9 },
-      { id: 602, name: '畅连月包', description: '适合日常办公的月度权益',
-        mode: '按流量', quotaGb: 30, validityDays: 30, price: 39.9 },
-      { id: 603, name: '不限量体验', description: '本地演示的限时不限量权益',
-        mode: '不限量', quotaGb: 0, validityDays: 7, price: 9.9 }
+      { id: '601', name: '轻量流量包', description: '适合临时办公和移动接入',
+        mode: '按流量', quotaGb: 10, quotaLabel: '10 GB', validityDays: 30, price: 19.9 },
+      { id: '602', name: '畅连月包', description: '适合日常办公的月度权益',
+        mode: '按流量', quotaGb: 30, quotaLabel: '30 GB', validityDays: 30, price: 39.9 },
+      { id: '603', name: '不限量体验', description: '本地演示的限时不限量权益',
+        mode: '不限量', quotaGb: 0, quotaLabel: '不限量', validityDays: 7, price: 9.9 }
     ],
     purchases: [
-      { id: 701, productName: '畅连月包', amount: 39.9,
+      { id: '701', orderId: '901', productName: '畅连月包', amount: 39.9,
         purchasedAt: '2026-08-20 10:30', requestId: 'PURCHASE-DEMO-0001' }
     ],
     usage: [
@@ -92,17 +98,17 @@ function createMemberData(): MemberData {
         durationMinutes: 48, usedAt: '2026-08-30 09:15' }
     ],
     orders: [
-      { id: 901, productId: 602, productName: '畅连月包', amount: 39.9,
+      { id: '901', productId: '602', productName: '畅连月包', amount: 39.9,
         status: 'REFUNDING', orderRequestId: 'ORDER-DEMO-0001', createdAt: '2026-08-20 10:29' },
-      { id: 902, productId: 601, productName: '轻量流量包', amount: 19.9,
+      { id: '902', productId: '601', productName: '轻量流量包', amount: 19.9,
         status: 'PENDING_PAYMENT', orderRequestId: 'ORDER-DEMO-0002', createdAt: '2026-08-31 18:00' }
     ],
     payments: [
-      { id: 1001, orderId: 901, amount: 39.9, status: 'SUCCEEDED',
+      { id: '1001', orderId: '901', amount: 39.9, status: 'SUCCEEDED',
         paymentRequestId: 'PAYMENT-DEMO-0001', createdAt: '2026-08-20 10:30' }
     ],
     refunds: [
-      { id: 1101, orderId: 901, productName: '畅连月包', amount: 39.9,
+      { id: '1101', orderId: '901', productName: '畅连月包', amount: 39.9,
         reason: '出差计划调整，暂不需要本月权益', status: 'PENDING',
         refundRequestId: 'REFUND-DEMO-0001', createdAt: '2026-08-31 19:10', reviewNote: '' }
     ],
@@ -173,6 +179,7 @@ export class DemoHm5MemberRepository {
     return {
       entitlementName: data.entitlement.name,
       remainingGb: data.entitlement.remainingGb,
+      remainingLabel: data.entitlement.remainingLabel,
       activeConnections: this.scenario === 'EMPTY' ? 0 : 1,
       pendingOrders: data.orders.filter((item: MemberOrder): boolean => item.status === 'PENDING_PAYMENT').length,
       unreadNotices: 2
@@ -214,14 +221,14 @@ export class DemoHm5MemberRepository {
     return this.data(userId).orders.map(cloneOrder)
   }
 
-  orderDetail(userId: string, id: number): MemberOrder {
+  orderDetail(userId: string, id: string): MemberOrder {
     this.guard()
     const order = this.data(userId).orders.find((item: MemberOrder): boolean => item.id === id)
     if (order === undefined) throw new ApiError('没有找到当前成员的订单', 404, 404, 'ORDER_NOT_FOUND')
     return cloneOrder(order)
   }
 
-  createOrder(userId: string, productId: number, authorized: boolean): MemberOrder {
+  createOrder(userId: string, productId: string, authorized: boolean): MemberOrder {
     this.guard()
     this.requireWrite(authorized)
     if (this.scenario === 'EMPTY') {
@@ -235,7 +242,7 @@ export class DemoHm5MemberRepository {
       throw new ApiError('该产品已有待支付订单', 409, 409, 'ORDER_DUPLICATE_PENDING')
     }
     const order: MemberOrder = {
-      id: this.nextOrderId++, productId: product.id, productName: product.name, amount: product.price,
+      id: String(this.nextOrderId++), productId: product.id, productName: product.name, amount: product.price,
       status: 'PENDING_PAYMENT', orderRequestId: `ORDER-DEMO-${String(this.orderSequence++).padStart(4, '0')}`,
       createdAt: '2026-09-01 11:30'
     }
@@ -243,7 +250,7 @@ export class DemoHm5MemberRepository {
     return cloneOrder(order)
   }
 
-  cancelOrder(userId: string, id: number, authorized: boolean): MemberOrder {
+  cancelOrder(userId: string, id: string, authorized: boolean): MemberOrder {
     this.guard()
     this.requireWrite(authorized)
     const order = this.data(userId).orders.find((item: MemberOrder): boolean => item.id === id)
@@ -255,13 +262,13 @@ export class DemoHm5MemberRepository {
     return cloneOrder(order)
   }
 
-  paymentForOrder(userId: string, orderId: number): MemberPayment | null {
+  paymentForOrder(userId: string, orderId: string): MemberPayment | null {
     this.guard()
     const payment = this.data(userId).payments.find((item: MemberPayment): boolean => item.orderId === orderId)
     return payment === undefined ? null : clonePayment(payment)
   }
 
-  createPayment(userId: string, orderId: number, authorized: boolean): MemberPayment {
+  createPayment(userId: string, orderId: string, authorized: boolean): MemberPayment {
     this.guard()
     this.requireWrite(authorized)
     const data = this.data(userId)
@@ -274,14 +281,15 @@ export class DemoHm5MemberRepository {
       throw new ApiError('该订单已有支付请求', 409, 409, 'PAYMENT_DUPLICATE')
     }
     const payment: MemberPayment = {
-      id: this.nextPaymentId++, orderId: order.id, amount: order.amount, status: 'SUCCEEDED',
+      id: String(this.nextPaymentId++), orderId: order.id, amount: order.amount, status: 'SUCCEEDED',
       paymentRequestId: `PAYMENT-DEMO-${String(this.paymentSequence++).padStart(4, '0')}`,
       createdAt: '2026-09-01 11:31'
     }
     data.payments.unshift(payment)
     order.status = 'PAID'
     data.purchases.unshift({
-      id: 700 + payment.id, productName: order.productName, amount: order.amount,
+      id: String(700 + Number(payment.id)), orderId: order.id,
+      productName: order.productName, amount: order.amount,
       purchasedAt: payment.createdAt, requestId: `PURCHASE-${payment.paymentRequestId}`
     })
     return clonePayment(payment)
@@ -293,14 +301,14 @@ export class DemoHm5MemberRepository {
     return this.data(userId).refunds.map(cloneRefund)
   }
 
-  refundDetail(userId: string, id: number): MemberRefund {
+  refundDetail(userId: string, id: string): MemberRefund {
     this.guard()
     const refund = this.data(userId).refunds.find((item: MemberRefund): boolean => item.id === id)
     if (refund === undefined) throw new ApiError('没有找到当前退款申请', 404, 404, 'REFUND_NOT_FOUND')
     return cloneRefund(refund)
   }
 
-  applyRefund(userId: string, orderId: number, reason: string, authorized: boolean): MemberRefund {
+  applyRefund(userId: string, orderId: string, reason: string, authorized: boolean): MemberRefund {
     this.guard()
     this.requireWrite(authorized)
     const normalizedReason = reason.trim()
@@ -318,7 +326,7 @@ export class DemoHm5MemberRepository {
       throw new ApiError('该订单已有待处理退款', 409, 409, 'REFUND_DUPLICATE_PENDING')
     }
     const refund: MemberRefund = {
-      id: this.nextRefundId++, orderId: order.id, productName: order.productName,
+      id: String(this.nextRefundId++), orderId: order.id, productName: order.productName,
       amount: order.amount, reason: normalizedReason, status: 'PENDING',
       refundRequestId: `REFUND-DEMO-${String(this.refundSequence++).padStart(4, '0')}`,
       createdAt: '2026-09-01 11:32', reviewNote: ''
@@ -328,7 +336,7 @@ export class DemoHm5MemberRepository {
     return cloneRefund(refund)
   }
 
-  reviewRefund(userId: string, id: number, approved: boolean, note: string,
+  reviewRefund(userId: string, id: string, approved: boolean, note: string,
     authorized: boolean): MemberRefund {
     this.guard()
     this.requireWrite(authorized)
@@ -351,7 +359,7 @@ export class DemoHm5MemberRepository {
     return this.data(`${tenantId}|preview-member`).refunds.map(cloneRefund)
   }
 
-  tenantRefundDetail(tenantId: string, id: number): MemberRefund {
+  tenantRefundDetail(tenantId: string, id: string): MemberRefund {
     this.guard()
     const refund = this.data(`${tenantId}|preview-member`).refunds
       .find((item: MemberRefund): boolean => item.id === id)
@@ -359,7 +367,7 @@ export class DemoHm5MemberRepository {
     return cloneRefund(refund)
   }
 
-  reviewTenantRefund(tenantId: string, id: number, approved: boolean, note: string,
+  reviewTenantRefund(tenantId: string, id: string, approved: boolean, note: string,
     authorized: boolean): MemberRefund {
     return this.reviewRefund(`${tenantId}|preview-member`, id, approved, note, authorized)
   }
@@ -393,35 +401,447 @@ export class DemoHm5MemberRepository {
   }
 }
 
+export interface Hm5PageWire<T> {
+  total: number
+  current: number
+  size: number
+  records: T[]
+}
+
+export interface EntitlementWire {
+  entitlementId: number
+  mode: string
+  subscriptionEndTime?: string
+  remainingSeconds?: number
+  status: number
+}
+
+export interface ProductWire {
+  productCode: string
+  name: string
+  entitlementMode: string
+  grantSeconds?: number
+  grantMonths?: number
+  amountCents: number
+}
+
+export interface PurchaseWire {
+  purchaseId: string
+  orderNo: string
+  purchasedSeconds: number
+  remainingSeconds: number
+  paidAmountCents: number
+  createTime: string
+}
+
+export interface UsageWire {
+  id: number
+  requestId: string
+  sessionId?: number
+  changeSeconds: number
+  reason: string
+  createTime: string
+}
+
+export interface OrderWire {
+  orderNo: string
+  productCode: string
+  entitlementMode: string
+  amountCents: number
+  status: string
+  createTime: string
+}
+
+export interface PaymentWire {
+  paymentNo: string
+  orderNo: string
+  amountCents: number
+  paidAmountCents: number
+  status: string
+  createTime: string
+}
+
+export interface RefundWire {
+  refundNo: string
+  orderNo: string
+  purchaseId: string
+  requestId: string
+  status: string
+  reason: string
+  requestedAmountCents: number
+  refundAmountCents: number
+  reviewComment?: string
+  createTime: string
+}
+
+export interface LocationAuthorizationWire {
+  enabled: number
+  consentTime?: string
+  revokedTime?: string
+  lastReportTime?: string
+}
+
+export interface LocationWire {
+  id: number
+  mac?: string
+  deviceCode?: string
+  accuracy: number
+  reportTime: string
+}
+
+interface OrderCreateBody {
+  clientRequestId: string
+  productCode: string
+}
+
+interface PaymentCreateBody {
+  requestId: string
+  channel: string
+}
+
+interface RefundApplyBody {
+  requestId: string
+  purchaseId: string
+  reason: string
+}
+
+interface RefundReviewBody {
+  decision: string
+  comment: string
+}
+
+function money(cents: number): number {
+  return Math.round(cents) / 100
+}
+
+function durationLabel(seconds: number): string {
+  if (seconds <= 0) return '0 小时'
+  const hours = seconds / 3600
+  if (hours < 24) return `${hours.toFixed(1)} 小时`
+  return `${(hours / 24).toFixed(1)} 天`
+}
+
+function orderStatus(status: string): 'PENDING_PAYMENT' | 'PAID' | 'CANCELLED' | 'REFUNDING' | 'REFUNDED' {
+  if (status === 'PAID' || status === 'FULFILLED') return 'PAID'
+  if (status === 'REFUNDING') return 'REFUNDING'
+  if (status === 'REFUNDED') return 'REFUNDED'
+  if (status === 'CANCELLED' || status === 'CLOSED') return 'CANCELLED'
+  return 'PENDING_PAYMENT'
+}
+
+function paymentStatus(status: string): 'PROCESSING' | 'SUCCEEDED' | 'FAILED' {
+  if (status === 'SUCCEEDED' || status === 'PAID') return 'SUCCEEDED'
+  if (status === 'FAILED' || status === 'CLOSED') return 'FAILED'
+  return 'PROCESSING'
+}
+
+function refundStatus(status: string): 'PENDING' | 'APPROVED' | 'REJECTED' {
+  if (status === 'APPROVED' || status === 'SUCCEEDED' || status === 'COMPLETED') return 'APPROVED'
+  if (status === 'REJECTED' || status === 'FAILED' || status === 'CANCELLED') return 'REJECTED'
+  return 'PENDING'
+}
+
+export function mapHm5Entitlement(value: EntitlementWire): MemberEntitlement {
+  const seconds = value.remainingSeconds ?? 0
+  return {
+    id: value.entitlementId,
+    name: value.mode === 'SUBSCRIPTION' ? '订阅权益' : '时长权益',
+    mode: value.mode,
+    remainingGb: seconds / 3600,
+    remainingLabel: durationLabel(seconds),
+    expiresAt: value.subscriptionEndTime ?? '',
+    status: value.status === 1 ? 'ACTIVE' : 'INACTIVE'
+  }
+}
+
+export function mapHm5Product(value: ProductWire): MemberProduct {
+  const seconds = value.grantSeconds ?? 0
+  const months = value.grantMonths ?? 0
+  const validityDays = months > 0 ? months * 30 : Math.ceil(seconds / 86400)
+  const quotaLabel = months > 0 ? `${months} 个月` : durationLabel(seconds)
+  return {
+    id: value.productCode,
+    name: value.name,
+    description: `${value.entitlementMode} 权益`,
+    mode: value.entitlementMode,
+    quotaGb: seconds / 3600,
+    quotaLabel: quotaLabel,
+    validityDays: validityDays,
+    price: money(value.amountCents)
+  }
+}
+
+export function mapHm5Purchase(value: PurchaseWire): MemberPurchase {
+  return {
+    id: value.purchaseId,
+    orderId: value.orderNo,
+    productName: `权益时长 ${durationLabel(value.purchasedSeconds)}`,
+    amount: money(value.paidAmountCents),
+    purchasedAt: value.createTime,
+    requestId: value.orderNo
+  }
+}
+
+export function mapHm5Usage(value: UsageWire): MemberUsageRecord {
+  return {
+    id: value.id,
+    connectionName: value.sessionId === undefined ? value.reason : `会话 ${value.sessionId}`,
+    trafficMb: 0,
+    durationMinutes: Math.round(Math.abs(value.changeSeconds) / 60),
+    usedAt: value.createTime
+  }
+}
+
+export function mapHm5Order(value: OrderWire, productName: string): MemberOrder {
+  return {
+    id: value.orderNo,
+    productId: value.productCode,
+    productName: productName.length > 0 ? productName : value.productCode,
+    amount: money(value.amountCents),
+    status: orderStatus(value.status),
+    orderRequestId: value.orderNo,
+    createdAt: value.createTime
+  }
+}
+
+export function mapHm5Payment(value: PaymentWire): MemberPayment {
+  return {
+    id: value.paymentNo,
+    orderId: value.orderNo,
+    amount: money(value.paidAmountCents > 0 ? value.paidAmountCents : value.amountCents),
+    status: paymentStatus(value.status),
+    paymentRequestId: value.paymentNo,
+    createdAt: value.createTime
+  }
+}
+
+export function mapHm5Refund(value: RefundWire, productName: string): MemberRefund {
+  const amount = value.refundAmountCents > 0 ? value.refundAmountCents : value.requestedAmountCents
+  return {
+    id: value.refundNo,
+    orderId: value.orderNo,
+    productName: productName.length > 0 ? productName : '权益订单',
+    amount: money(amount),
+    reason: value.reason,
+    status: refundStatus(value.status),
+    refundRequestId: value.requestId,
+    createdAt: value.createTime,
+    reviewNote: value.reviewComment ?? ''
+  }
+}
+
+export function mapHm5LocationPermission(value: LocationAuthorizationWire): MemberLocationPermission {
+  const granted = value.enabled === 1
+  return {
+    granted: granted,
+    precision: granted ? '由设备定位精度决定' : '未授权',
+    updatedAt: granted ? value.consentTime ?? '' : value.revokedTime ?? ''
+  }
+}
+
+export function mapHm5Location(value: LocationWire): MemberLocationRecord {
+  const subject = value.deviceCode ?? value.mac ?? '已授权设备'
+  return {
+    id: value.id,
+    place: subject,
+    accuracyMeters: value.accuracy,
+    recordedAt: value.reportTime
+  }
+}
+
 export class RealHm5MemberRepository {
-  private pending(): ApiError {
-    return new ApiError('真实成员消费与位置接口等待公开契约', 503, 503, 'REAL_API_PENDING')
+  private readonly productNames: Map<string, string> = new Map<string, string>()
+  private readonly paymentsByOrder: Map<string, MemberPayment> = new Map<string, MemberPayment>()
+
+  private pending(message: string): ApiError {
+    return new ApiError(message, 503, 503, 'REAL_API_PENDING')
   }
 
-  async summary(): Promise<MemberSummary> { throw this.pending() }
-  async entitlement(): Promise<MemberEntitlement> { throw this.pending() }
-  async products(_keyword: string): Promise<MemberProduct[]> { throw this.pending() }
-  async purchases(): Promise<MemberPurchase[]> { throw this.pending() }
-  async usage(): Promise<MemberUsageRecord[]> { throw this.pending() }
-  async orders(): Promise<MemberOrder[]> { throw this.pending() }
-  async orderDetail(_id: number): Promise<MemberOrder> { throw this.pending() }
-  async createOrder(_productId: number): Promise<MemberOrder> { throw this.pending() }
-  async cancelOrder(_id: number): Promise<MemberOrder> { throw this.pending() }
-  async paymentForOrder(_orderId: number): Promise<MemberPayment | null> { throw this.pending() }
-  async createPayment(_orderId: number): Promise<MemberPayment> { throw this.pending() }
-  async refunds(): Promise<MemberRefund[]> { throw this.pending() }
-  async refundDetail(_id: number): Promise<MemberRefund> { throw this.pending() }
-  async applyRefund(_orderId: number, _reason: string): Promise<MemberRefund> { throw this.pending() }
-  async reviewRefund(_id: number, _approved: boolean, _note: string): Promise<MemberRefund> {
-    throw this.pending()
+  private async productName(productCode: string): Promise<string> {
+    if (!this.productNames.has(productCode)) await this.products('')
+    return this.productNames.get(productCode) ?? productCode
   }
-  async tenantRefunds(): Promise<MemberRefund[]> { throw this.pending() }
-  async tenantRefundDetail(_id: number): Promise<MemberRefund> { throw this.pending() }
-  async reviewTenantRefund(_id: number, _approved: boolean, _note: string): Promise<MemberRefund> {
-    throw this.pending()
+
+  private async mapOrder(value: OrderWire): Promise<MemberOrder> {
+    return mapHm5Order(value, await this.productName(value.productCode))
   }
-  async locationPermission(): Promise<MemberLocationPermission> { throw this.pending() }
-  async setLocationPermission(_granted: boolean): Promise<MemberLocationPermission> { throw this.pending() }
-  async locationHistory(): Promise<MemberLocationRecord[]> { throw this.pending() }
-  async clearLocationHistory(): Promise<void> { throw this.pending() }
+
+  async summary(): Promise<MemberSummary> {
+    const entitlement = await this.entitlement()
+    const orders = await this.orders()
+    return {
+      entitlementName: entitlement.name,
+      remainingGb: entitlement.remainingGb,
+      remainingLabel: entitlement.remainingLabel,
+      activeConnections: 0,
+      pendingOrders: orders.filter((item: MemberOrder): boolean =>
+        item.status === 'PENDING_PAYMENT').length,
+      unreadNotices: 0
+    }
+  }
+
+  async entitlement(): Promise<MemberEntitlement> {
+    const response = await sessionStore.authorizedRequest<EntitlementWire>(
+      http.RequestMethod.GET, realApiPath('entitlements.mine'))
+    return mapHm5Entitlement(response.data)
+  }
+
+  async products(keyword: string): Promise<MemberProduct[]> {
+    const response = await sessionStore.authorizedRequest<ProductWire[]>(
+      http.RequestMethod.GET, realApiPath('entitlements.products'))
+    const normalized = keyword.trim().toLowerCase()
+    const products = response.data.map((item: ProductWire): MemberProduct => mapHm5Product(item))
+    for (const item of products) this.productNames.set(item.id, item.name)
+    return normalized.length === 0
+      ? products
+      : products.filter((item: MemberProduct): boolean =>
+        item.name.toLowerCase().includes(normalized) ||
+        item.description.toLowerCase().includes(normalized))
+  }
+
+  async purchases(): Promise<MemberPurchase[]> {
+    const response = await sessionStore.authorizedRequest<Hm5PageWire<PurchaseWire>>(
+      http.RequestMethod.GET, `${realApiPath('entitlements.purchases')}?current=1&size=100`)
+    return response.data.records.map((item: PurchaseWire): MemberPurchase => mapHm5Purchase(item))
+  }
+
+  async usage(): Promise<MemberUsageRecord[]> {
+    const response = await sessionStore.authorizedRequest<Hm5PageWire<UsageWire>>(
+      http.RequestMethod.GET, `${realApiPath('entitlements.usageLogs')}?current=1&size=100`)
+    return response.data.records.map((item: UsageWire): MemberUsageRecord => mapHm5Usage(item))
+  }
+
+  async orders(): Promise<MemberOrder[]> {
+    const response = await sessionStore.authorizedRequest<Hm5PageWire<OrderWire>>(
+      http.RequestMethod.GET, `${realApiPath('entitlements.orders')}?current=1&size=100`)
+    const result: MemberOrder[] = []
+    for (const item of response.data.records) result.push(await this.mapOrder(item))
+    return result
+  }
+
+  async orderDetail(id: string): Promise<MemberOrder> {
+    const response = await sessionStore.authorizedRequest<OrderWire>(
+      http.RequestMethod.GET, resolveRealApiPath(
+        'entitlements.orderDetail', ['orderNo'], [id]))
+    return this.mapOrder(response.data)
+  }
+
+  async createOrder(productId: string): Promise<MemberOrder> {
+    const body: OrderCreateBody = {
+      clientRequestId: util.generateRandomUUID(),
+      productCode: productId
+    }
+    const response = await sessionStore.authorizedRequest<OrderWire>(
+      http.RequestMethod.POST, realApiPath('entitlements.orders'), JSON.stringify(body))
+    return this.mapOrder(response.data)
+  }
+
+  async cancelOrder(id: string): Promise<MemberOrder> {
+    const response = await sessionStore.authorizedRequest<OrderWire>(
+      http.RequestMethod.POST, resolveRealApiPath(
+        'entitlements.orderCancel', ['orderNo'], [id]))
+    return this.mapOrder(response.data)
+  }
+
+  async paymentForOrder(orderId: string): Promise<MemberPayment | null> {
+    return this.paymentsByOrder.get(orderId) ?? null
+  }
+
+  async createPayment(orderId: string): Promise<MemberPayment> {
+    const body: PaymentCreateBody = {
+      requestId: util.generateRandomUUID(),
+      channel: 'LOCAL_DEMO'
+    }
+    const response = await sessionStore.authorizedRequest<PaymentWire>(
+      http.RequestMethod.POST,
+      resolveRealApiPath('entitlements.orderPayments', ['orderNo'], [orderId]),
+      JSON.stringify(body))
+    const payment = mapHm5Payment(response.data)
+    this.paymentsByOrder.set(orderId, payment)
+    return payment
+  }
+
+  async refunds(): Promise<MemberRefund[]> {
+    const response = await sessionStore.authorizedRequest<Hm5PageWire<RefundWire>>(
+      http.RequestMethod.GET, `${realApiPath('entitlements.refunds')}?current=1&size=100`)
+    return response.data.records.map((item: RefundWire): MemberRefund => mapHm5Refund(item, ''))
+  }
+
+  async refundDetail(id: string): Promise<MemberRefund> {
+    const response = await sessionStore.authorizedRequest<RefundWire>(
+      http.RequestMethod.GET, resolveRealApiPath(
+        'entitlements.refundDetail', ['refundNo'], [id]))
+    const order = await this.orderDetail(response.data.orderNo)
+    return mapHm5Refund(response.data, order.productName)
+  }
+
+  async applyRefund(orderId: string, reason: string): Promise<MemberRefund> {
+    const purchases = await this.purchases()
+    const purchase = purchases.find((item: MemberPurchase): boolean => item.orderId === orderId)
+    if (purchase === undefined) {
+      throw new ApiError('该订单没有可退款的权益记录', 409, 409, 'REFUND_PURCHASE_NOT_FOUND')
+    }
+    const body: RefundApplyBody = {
+      requestId: util.generateRandomUUID(),
+      purchaseId: purchase.id,
+      reason: reason
+    }
+    const response = await sessionStore.authorizedRequest<RefundWire>(
+      http.RequestMethod.POST, realApiPath('entitlements.refunds'), JSON.stringify(body))
+    const order = await this.orderDetail(orderId)
+    return mapHm5Refund(response.data, order.productName)
+  }
+
+  async reviewRefund(_id: string, _approved: boolean, _note: string): Promise<MemberRefund> {
+    throw this.pending('成员端不能审核真实退款')
+  }
+
+  async tenantRefunds(): Promise<MemberRefund[]> {
+    const response = await sessionStore.authorizedRequest<Hm5PageWire<RefundWire>>(
+      http.RequestMethod.GET, `${realApiPath('admin.refunds')}?current=1&size=100`)
+    return response.data.records.map((item: RefundWire): MemberRefund => mapHm5Refund(item, ''))
+  }
+
+  async tenantRefundDetail(id: string): Promise<MemberRefund> {
+    const response = await sessionStore.authorizedRequest<RefundWire>(
+      http.RequestMethod.GET, resolveRealApiPath(
+        'admin.refundDetail', ['refundNo'], [id]))
+    return mapHm5Refund(response.data, '')
+  }
+
+  async reviewTenantRefund(id: string, approved: boolean, note: string): Promise<MemberRefund> {
+    const body: RefundReviewBody = {
+      decision: approved ? 'APPROVE' : 'REJECT',
+      comment: note
+    }
+    const response = await sessionStore.authorizedRequest<RefundWire>(
+      http.RequestMethod.PUT,
+      resolveRealApiPath('admin.refundReview', ['refundNo'], [id]),
+      JSON.stringify(body))
+    return mapHm5Refund(response.data, '')
+  }
+
+  async locationPermission(): Promise<MemberLocationPermission> {
+    const response = await sessionStore.authorizedRequest<LocationAuthorizationWire>(
+      http.RequestMethod.GET, realApiPath('locations.consent'))
+    return mapHm5LocationPermission(response.data)
+  }
+
+  async setLocationPermission(granted: boolean): Promise<MemberLocationPermission> {
+    const response = await sessionStore.authorizedRequest<LocationAuthorizationWire>(
+      granted ? http.RequestMethod.POST : http.RequestMethod.DELETE,
+      realApiPath('locations.consent'))
+    return mapHm5LocationPermission(response.data)
+  }
+
+  async locationHistory(): Promise<MemberLocationRecord[]> {
+    const response = await sessionStore.authorizedRequest<Hm5PageWire<LocationWire>>(
+      http.RequestMethod.GET, `${realApiPath('locations.mine')}?current=1&size=100`)
+    return response.data.records.map((item: LocationWire): MemberLocationRecord => mapHm5Location(item))
+  }
+
+  async clearLocationHistory(): Promise<void> {
+    await sessionStore.authorizedRequest<number>(
+      http.RequestMethod.DELETE, realApiPath('locations.history'))
+  }
 }

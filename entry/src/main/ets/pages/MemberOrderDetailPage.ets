@@ -15,10 +15,10 @@ struct MemberOrderDetailPage {
 
   onPageShow(): void { this.load() }
 
-  private orderId(): number {
+  private orderId(): string {
     if (this.order !== null) return this.order.id
     const params = router.getParams() as OrderDetailParams | null
-    return Number(params?.id ?? '0')
+    return params?.id ?? ''
   }
 
   private async load(): Promise<void> {
@@ -76,7 +76,7 @@ struct MemberOrderDetailPage {
           Button('本地演示支付').width('100%').height(48).backgroundColor(AppTheme.primaryStrong)
             .fontColor(AppTheme.primaryText).borderRadius(8)
             .onClick(() => router.pushUrl({
-              url: 'pages/MemberPaymentPage', params: { orderId: String(this.order?.id ?? 0) }
+              url: 'pages/MemberPaymentPage', params: { orderId: this.order?.id ?? '' }
             }))
           Button('取消订单').width('100%').height(44).backgroundColor(AppTheme.dangerSurface)
             .fontColor(AppTheme.dangerText).borderRadius(8).onClick(() => this.cancel())
@@ -84,7 +84,7 @@ struct MemberOrderDetailPage {
           Button('申请退款').width('100%').height(48).backgroundColor(AppTheme.primaryStrong)
             .fontColor(AppTheme.primaryText).borderRadius(8)
             .onClick(() => router.pushUrl({
-              url: 'pages/MemberRefundApplyPage', params: { orderId: String(this.order?.id ?? 0) }
+              url: 'pages/MemberRefundApplyPage', params: { orderId: this.order?.id ?? '' }
             }))
         }
       }

@@ -9,6 +9,7 @@ export interface Hm7RequestContext {
   scope: Hm7Scope
   role: number
   userId: string
+  subjectUserId?: string
   tenantId: string
   tenantRole: string
   contextType: string

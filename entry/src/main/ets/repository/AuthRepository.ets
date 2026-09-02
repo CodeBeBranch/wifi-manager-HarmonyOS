@@ -1,4 +1,5 @@
 import http from '@ohos.net.http'
+import { realApiPath } from '../config/RealApiCatalog'
 import {
   AuthResult,
   LoginByCodeRequest,
@@ -16,7 +17,7 @@ export class RealAuthRepository {
   login(request: LoginRequest): Promise<ApiSuccess<AuthResult>> {
     return httpClient.request<AuthResult>({
       method: http.RequestMethod.POST,
-      path: '/auth/login',
+      path: realApiPath('auth.login'),
       body: JSON.stringify(request)
     })
   }
@@ -24,7 +25,7 @@ export class RealAuthRepository {
   loginByCode(request: LoginByCodeRequest): Promise<ApiSuccess<AuthResult>> {
     return httpClient.request<AuthResult>({
       method: http.RequestMethod.POST,
-      path: '/auth/code-login',
+      path: realApiPath('auth.codeLogin'),
       body: JSON.stringify(request)
     })
   }
@@ -32,7 +33,7 @@ export class RealAuthRepository {
   sendVerifyCode(request: SendVerifyCodeRequest): Promise<ApiSuccess<Object | null>> {
     return httpClient.request<Object | null>({
       method: http.RequestMethod.POST,
-      path: '/auth/codes',
+      path: realApiPath('auth.codes'),
       body: JSON.stringify(request)
     })
   }
@@ -40,7 +41,7 @@ export class RealAuthRepository {
   register(request: RegisterRequest): Promise<ApiSuccess<RegisterResult>> {
     return httpClient.request<RegisterResult>({
       method: http.RequestMethod.POST,
-      path: '/auth/register',
+      path: realApiPath('auth.register'),
       body: JSON.stringify(request)
     })
   }
@@ -48,7 +49,7 @@ export class RealAuthRepository {
   resetPassword(request: ResetPasswordRequest): Promise<ApiSuccess<Object | null>> {
     return httpClient.request<Object | null>({
       method: http.RequestMethod.POST,
-      path: '/auth/reset-password',
+      path: realApiPath('auth.resetPassword'),
       body: JSON.stringify(request)
     })
   }
@@ -56,7 +57,7 @@ export class RealAuthRepository {
   refresh(refreshCookie: string): Promise<ApiSuccess<AuthResult>> {
     return httpClient.request<AuthResult>({
       method: http.RequestMethod.POST,
-      path: '/auth/refresh',
+      path: realApiPath('auth.refresh'),
       refreshCookie: refreshCookie
     })
   }
@@ -64,7 +65,7 @@ export class RealAuthRepository {
   logout(refreshCookie: string): Promise<ApiSuccess<Object | null>> {
     return httpClient.request<Object | null>({
       method: http.RequestMethod.POST,
-      path: '/auth/logout',
+      path: realApiPath('auth.logout'),
       refreshCookie: refreshCookie
     })
   }

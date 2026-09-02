@@ -1,3 +1,5 @@
+import http from '@ohos.net.http'
+import { realApiPath, resolveRealApiPath } from '../config/RealApiCatalog'
 import { ApiError } from '../model/ApiModels'
 import { Hm3DemoScenario } from '../model/Hm3Models'
 import {
@@ -14,6 +16,7 @@ import {
   TenantTrackPoint,
   TenantTrafficInsight
 } from '../model/Hm6Models'
+import { sessionStore } from '../session/SessionStore'
 
 interface TenantHm6Data {
   locations: TenantLocation[]
@@ -408,22 +411,203 @@ export class DemoHm6LocationRepository {
   }
 }
 
+export interface Hm6PageWire<T> {
+  total: number
+  current: number
+  size: number
+  records: T[]
+}
+
+export interface TenantLocationWire {
+  id: number
+  mac?: string
+  userId?: number
+  sessionId?: number
+  nodeId?: number
+  deviceCode?: string
+  latitude: number
+  longitude: number
+  accuracy: number
+  reportTime: string
+}
+
+export interface GeofenceWire {
+  fenceId: number
+  name: string
+  centerLatitude: number
+  centerLongitude: number
+  radiusMeters: number
+  enabled: number
+  updateTime: string
+}
+
+export interface GeofenceEventWire {
+  eventId: number
+  fenceId: number
+  fenceName: string
+  userId?: number
+  sessionId?: number
+  deviceCode?: string
+  mac?: string
+  eventType: string
+  eventTime: string
+}
+
+interface GeofenceBody {
+  name: string
+  centerLatitude: number
+  centerLongitude: number
+  radiusMeters: number
+  enabled?: number
+  description: string
+}
+
+export function mapHm6Location(value: TenantLocationWire): TenantLocation {
+  const member = value.userId !== undefined
+  const subjectId = member
+    ? `USER-${value.userId}`
+    : value.deviceCode ?? value.mac ?? `NODE-${value.nodeId ?? 0}`
+  return {
+    id: value.id,
+    subjectId: subjectId,
+    subjectName: member ? `成员 ${value.userId}` : value.deviceCode ?? value.mac ?? '边缘设备',
+    subjectType: member ? 'MEMBER' : 'DEVICE',
+    zoneName: value.deviceCode ?? value.mac ?? '已上报位置',
+    latitude: value.latitude,
+    longitude: value.longitude,
+    accuracyMeters: value.accuracy,
+    capturedAt: value.reportTime
+  }
+}
+
+export function mapHm6Geofence(value: GeofenceWire): TenantGeofence {
+  return {
+    id: value.fenceId,
+    code: String(value.fenceId),
+    name: value.name,
+    shape: 'CIRCLE',
+    enabled: value.enabled === 1,
+    centerLatitude: value.centerLatitude,
+    centerLongitude: value.centerLongitude,
+    radiusMeters: value.radiusMeters,
+    vertexCount: 0,
+    eventCount: 0,
+    updatedAt: value.updateTime
+  }
+}
+
+export function mapHm6GeofenceEvent(value: GeofenceEventWire): TenantGeofenceEvent {
+  const subject = value.userId !== undefined
+    ? `成员 ${value.userId}`
+    : value.deviceCode ?? value.mac ?? `会话 ${value.sessionId ?? 0}`
+  return {
+    id: value.eventId,
+    geofenceId: value.fenceId,
+    geofenceName: value.fenceName,
+    eventType: value.eventType === 'EXIT' ? 'EXIT' : 'ENTER',
+    subjectName: subject,
+    zoneName: value.fenceName,
+    accuracyMeters: 0,
+    occurredAt: value.eventTime
+  }
+}
+
 export class RealHm6LocationRepository {
-  private pending(): ApiError {
-    return new ApiError('真实位置、围栏与分析接口等待公开契约', 503, 503, 'REAL_API_PENDING')
+  private pending(message: string): ApiError {
+    return new ApiError(message, 503, 503, 'REAL_API_PENDING')
   }
 
-  async locations(_keyword: string): Promise<TenantLocation[]> { throw this.pending() }
-  async gis(): Promise<TenantGisSnapshot> { throw this.pending() }
-  async geofences(_keyword: string): Promise<TenantGeofence[]> { throw this.pending() }
-  async geofenceDetail(_id: number): Promise<TenantGeofence> { throw this.pending() }
-  async saveGeofence(_input: TenantGeofenceInput, _id: number | null): Promise<TenantGeofence> {
-    throw this.pending()
+  private body(input: TenantGeofenceInput, includeEnabled: boolean): GeofenceBody {
+    if (input.shape !== 'CIRCLE') {
+      throw new ApiError('真实围栏接口当前仅支持圆形围栏', 409, 409,
+        'REAL_GEOFENCE_SHAPE_UNSUPPORTED')
+    }
+    const body: GeofenceBody = {
+      name: input.name,
+      centerLatitude: input.centerLatitude,
+      centerLongitude: input.centerLongitude,
+      radiusMeters: input.radiusMeters,
+      description: input.code
+    }
+    if (includeEnabled) body.enabled = 1
+    return body
   }
-  async toggleGeofence(_id: number): Promise<TenantGeofence> { throw this.pending() }
-  async deleteGeofence(_id: number): Promise<void> { throw this.pending() }
-  async geofenceEvents(_geofenceId: number, _keyword: string): Promise<TenantGeofenceEvent[]> {
-    throw this.pending()
+
+  async locations(keyword: string): Promise<TenantLocation[]> {
+    const response = await sessionStore.authorizedRequest<Hm6PageWire<TenantLocationWire>>(
+      http.RequestMethod.GET, `${realApiPath('locations.admin')}?current=1&size=100`)
+    const records = response.data.records.map(
+      (item: TenantLocationWire): TenantLocation => mapHm6Location(item))
+    const normalized = keyword.trim().toLowerCase()
+    return normalized.length === 0
+      ? records
+      : records.filter((item: TenantLocation): boolean =>
+        item.subjectId.toLowerCase().includes(normalized) ||
+        item.subjectName.toLowerCase().includes(normalized) ||
+        item.zoneName.toLowerCase().includes(normalized))
   }
-  async analytics(): Promise<TenantAnalyticsSnapshot> { throw this.pending() }
+
+  async gis(): Promise<TenantGisSnapshot> {
+    throw this.pending('真实轨迹、停留点和热力图等待租户查询修复')
+  }
+
+  async geofences(keyword: string): Promise<TenantGeofence[]> {
+    const normalized = keyword.trim()
+    const suffix = normalized.length === 0 ? '' : `&keyword=${encodeURIComponent(normalized)}`
+    const response = await sessionStore.authorizedRequest<Hm6PageWire<GeofenceWire>>(
+      http.RequestMethod.GET, `${realApiPath('geofences.list')}?current=1&size=100${suffix}`)
+    return response.data.records.map(
+      (item: GeofenceWire): TenantGeofence => mapHm6Geofence(item))
+  }
+
+  async geofenceDetail(id: number): Promise<TenantGeofence> {
+    const response = await sessionStore.authorizedRequest<GeofenceWire>(
+      http.RequestMethod.GET, resolveRealApiPath(
+        'geofences.detail', ['fenceId'], [String(id)]))
+    return mapHm6Geofence(response.data)
+  }
+
+  async saveGeofence(input: TenantGeofenceInput, id: number | null): Promise<TenantGeofence> {
+    const response = id === null
+      ? await sessionStore.authorizedRequest<GeofenceWire>(
+        http.RequestMethod.POST, realApiPath('geofences.list'), JSON.stringify(this.body(input, true)))
+      : await sessionStore.authorizedRequest<GeofenceWire>(
+        http.RequestMethod.PUT, resolveRealApiPath(
+          'geofences.detail', ['fenceId'], [String(id)]), JSON.stringify(this.body(input, false)))
+    return mapHm6Geofence(response.data)
+  }
+
+  async toggleGeofence(id: number): Promise<TenantGeofence> {
+    const current = await this.geofenceDetail(id)
+    const enabled = current.enabled ? 0 : 1
+    const response = await sessionStore.authorizedRequest<GeofenceWire>(
+      http.RequestMethod.POST,
+      `${resolveRealApiPath('geofences.enabled', ['fenceId'], [String(id)])}?enabled=${enabled}`,
+      undefined, 'PATCH')
+    return mapHm6Geofence(response.data)
+  }
+
+  async deleteGeofence(id: number): Promise<void> {
+    await sessionStore.authorizedRequest<Object | null>(
+      http.RequestMethod.DELETE, resolveRealApiPath(
+        'geofences.detail', ['fenceId'], [String(id)]))
+  }
+
+  async geofenceEvents(geofenceId: number, keyword: string): Promise<TenantGeofenceEvent[]> {
+    const response = await sessionStore.authorizedRequest<Hm6PageWire<GeofenceEventWire>>(
+      http.RequestMethod.GET,
+      `${realApiPath('geofences.events')}?current=1&size=100&fenceId=${geofenceId}`)
+    const records = response.data.records.map(
+      (item: GeofenceEventWire): TenantGeofenceEvent => mapHm6GeofenceEvent(item))
+    const normalized = keyword.trim().toLowerCase()
+    return normalized.length === 0
+      ? records
+      : records.filter((item: TenantGeofenceEvent): boolean =>
+        item.subjectName.toLowerCase().includes(normalized) ||
+        item.eventType.toLowerCase().includes(normalized))
+  }
+
+  async analytics(): Promise<TenantAnalyticsSnapshot> {
+    throw this.pending('真实 GIS 与租户分析等待租户查询修复')
+  }
 }

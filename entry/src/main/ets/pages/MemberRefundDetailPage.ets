@@ -20,7 +20,7 @@ struct MemberRefundDetailPage {
     this.loading = true
     this.error = ''
     try {
-      this.refund = await repositoryFactory.hm5Member().refundDetail(Number(params?.id ?? '0'))
+      this.refund = await repositoryFactory.hm5Member().refundDetail(params?.id ?? '')
     } catch (error) {
       this.error = error instanceof ApiError ? error.message : '退款详情加载失败'
     } finally {

@@ -63,7 +63,7 @@ export struct MemberHomeContent {
                   .fontColor(AppTheme.text)
                 Text('当前权益').fontSize(12).fontColor(AppTheme.muted)
               }.alignItems(HorizontalAlign.Start).layoutWeight(1)
-              Text(`${this.summary.remainingGb.toFixed(1)} GB`)
+              Text(this.summary.remainingLabel)
                 .fontSize(22).fontWeight(FontWeight.Bold).fontColor(AppTheme.primary)
             }.width('100%')
             Row() {

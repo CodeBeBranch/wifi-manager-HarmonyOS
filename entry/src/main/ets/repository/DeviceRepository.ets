@@ -1,4 +1,5 @@
 import http from '@ohos.net.http'
+import { realApiPath, resolveRealApiPath } from '../config/RealApiCatalog'
 import { DeviceNode, DevicePageResult } from '../model/DeviceModels'
 import { sessionStore } from '../session/SessionStore'
 
@@ -9,7 +10,7 @@ class DeviceRepository {
       : ''
     const response = await sessionStore.authorizedRequest<DevicePageResult>(
       http.RequestMethod.GET,
-      `/admin/devices?current=${current}&size=${size}${query}`
+      `${realApiPath('devices.list')}?current=${current}&size=${size}${query}`
     )
     return response.data
   }
@@ -17,7 +18,7 @@ class DeviceRepository {
   async detail(nodeId: string): Promise<DeviceNode> {
     const response = await sessionStore.authorizedRequest<DeviceNode>(
       http.RequestMethod.GET,
-      `/admin/devices/${encodeURIComponent(nodeId)}`
+      resolveRealApiPath('devices.detail', ['nodeId'], [nodeId])
     )
     return response.data
   }

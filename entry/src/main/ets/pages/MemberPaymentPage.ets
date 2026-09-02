@@ -17,9 +17,9 @@ struct MemberPaymentPage {
 
   aboutToAppear(): void { this.load() }
 
-  private orderId(): number {
+  private orderId(): string {
     const params = router.getParams() as PaymentParams | null
-    return Number(params?.orderId ?? '0')
+    return params?.orderId ?? ''
   }
 
   private async load(): Promise<void> {

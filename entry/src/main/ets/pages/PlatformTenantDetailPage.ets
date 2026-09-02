@@ -163,7 +163,14 @@ struct PlatformTenantDetailPage {
   }
 
   private openEntitlement(): void {
-    router.pushUrl({ url: 'pages/PlatformAccountEntitlementPage' })
+    if (this.tenant === null) return
+    router.pushUrl({
+      url: 'pages/PlatformAccountEntitlementPage',
+      params: {
+        tenantId: this.tenant.tenantId,
+        userId: this.tenant.ownerUserId
+      }
+    })
   }
 
   build() {

@@ -1,4 +1,5 @@
 import http from '@ohos.net.http'
+import { realApiPath, resolveRealApiPath } from '../config/RealApiCatalog'
 import { ApiError } from '../model/ApiModels'
 import {
   BlockTrafficRequest,
@@ -23,7 +24,7 @@ class DeviceCommandRepository {
     const body: RestartDeviceRequest = { reason: reason.trim() }
     const response = await sessionStore.authorizedRequest<DeviceCommandResult>(
       http.RequestMethod.POST,
-      `/admin/devices/${encodeURIComponent(deviceCode)}/kick`,
+      resolveRealApiPath('devices.kick', ['deviceCode'], [deviceCode]),
       JSON.stringify(body)
     )
     return this.validateSubmitResult(response.data, response.requestId)
@@ -33,7 +34,7 @@ class DeviceCommandRepository {
     const body: DisconnectMacRequest = { mac: mac.trim().toUpperCase() }
     const response = await sessionStore.authorizedRequest<DeviceCommandResult>(
       http.RequestMethod.POST,
-      `/admin/devices/${encodeURIComponent(deviceCode)}/disconnect-mac`,
+      resolveRealApiPath('devices.disconnectMac', ['deviceCode'], [deviceCode]),
       JSON.stringify(body)
     )
     return this.validateSubmitResult(response.data, response.requestId)
@@ -46,7 +47,7 @@ class DeviceCommandRepository {
     }
     const response = await sessionStore.authorizedRequest<DeviceCommandResult>(
       http.RequestMethod.POST,
-      `/admin/devices/${encodeURIComponent(deviceCode)}/block-traffic`,
+      resolveRealApiPath('devices.blockTraffic', ['deviceCode'], [deviceCode]),
       JSON.stringify(body)
     )
     return this.validateSubmitResult(response.data, response.requestId)
@@ -58,7 +59,7 @@ class DeviceCommandRepository {
     params = addQuery(params, 'deviceCode', query.deviceCode.trim())
     const response = await sessionStore.authorizedRequest<DeviceCommandPageResult>(
       http.RequestMethod.GET,
-      `/admin/device-commands${params}`
+      `${realApiPath('devices.commands')}${params}`
     )
     const result = response.data
     if (result === null || typeof result !== 'object' ||

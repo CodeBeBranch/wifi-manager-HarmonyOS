@@ -13,6 +13,7 @@ struct PlatformSaasPlanDetailPage {
   @State loading: boolean = false
   @State errorMessage: string = ''
   private planId: string = ''
+  private authorized: boolean = false
 
   aboutToAppear(): void {
     const snapshot = sessionStore.getSnapshot()
@@ -23,6 +24,11 @@ struct PlatformSaasPlanDetailPage {
       resetToMain()
       return
     }
+    this.authorized = true
+  }
+
+  onPageShow(): void {
+    if (!this.authorized) return
     this.load()
   }
 
@@ -58,11 +64,23 @@ struct PlatformSaasPlanDetailPage {
         .border({ width: 1, color: AppTheme.border })
         .onClick(() => router.back())
         Column({ space: 3 }) {
-          Text('只读').fontSize(11).fontWeight(FontWeight.Medium).fontColor(AppTheme.primary)
+          Text('平台服务').fontSize(11).fontWeight(FontWeight.Medium).fontColor(AppTheme.primary)
           Text('套餐详情').fontSize(22).fontWeight(FontWeight.Bold).fontColor(AppTheme.text)
         }
         .alignItems(HorizontalAlign.Start)
         .layoutWeight(1)
+        Button('编辑')
+          .enabled(this.plan !== null)
+          .width(64)
+          .height(44)
+          .fontSize(13)
+          .fontColor(AppTheme.primaryText)
+          .backgroundColor(AppTheme.primaryStrong)
+          .borderRadius(8)
+          .onClick(() => router.pushUrl({
+            url: 'pages/PlatformSaasPlanEditorPage',
+            params: { planId: this.planId }
+          }))
       }
       .width('100%')
       .padding({ left: 16, right: 16, top: 18, bottom: 14 })

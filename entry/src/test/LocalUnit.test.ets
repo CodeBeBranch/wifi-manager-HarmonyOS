@@ -4,6 +4,11 @@ import {
   buildAlertWebSocketUrl,
   normalizeGatewayUrl
 } from '../main/ets/config/RuntimeConfig'
+import {
+  configuredDefaultGatewayUrl,
+  realApiPath,
+  resolveRealApiPath
+} from '../main/ets/config/RealApiCatalog'
 import { ApiError } from '../main/ets/model/ApiModels'
 import {
   AlertEvent,
@@ -43,22 +48,30 @@ import {
 } from '../main/ets/model/WifiConfigModels'
 import { NetworkSession, SessionPageResult } from '../main/ets/model/SessionModels'
 import { PlatformTenantPageResult } from '../main/ets/model/TenantModels'
-import { TenantCreateInput } from '../main/ets/model/Hm2Models'
+import { SaasPlanInput, TenantCreateInput } from '../main/ets/model/Hm2Models'
 import {
   DemoHm4SecurityRepository,
   RealHm4SecurityRepository
 } from '../main/ets/repository/Hm4SecurityRepository'
 import {
   DemoHm5MemberRepository,
-  RealHm5MemberRepository
+  RealHm5MemberRepository,
+  mapHm5Entitlement,
+  mapHm5Order,
+  mapHm5Product,
+  mapHm5Refund
 } from '../main/ets/repository/Hm5MemberRepository'
 import {
   DemoHm6LocationRepository,
-  RealHm6LocationRepository
+  RealHm6LocationRepository,
+  mapHm6Geofence,
+  mapHm6GeofenceEvent,
+  mapHm6Location
 } from '../main/ets/repository/Hm6LocationRepository'
 import {
   DemoHm7CapabilityRepository,
-  RealHm7CapabilityRepository
+  RealHm7CapabilityRepository,
+  realHm7CapabilityRoute
 } from '../main/ets/repository/Hm7CapabilityRepository'
 import { Hm7RequestContext } from '../main/ets/model/Hm7Models'
 import { DemoAlertEventSource } from '../main/ets/preview/DemoAlertEventSource'
@@ -328,6 +341,34 @@ export default function localUnitTest() {
     it('normalizesGatewayUrl', 0, () => {
       expect(normalizeGatewayUrl(' http://192.168.1.10:8080/ '))
         .assertEqual('http://192.168.1.10:8080')
+    })
+
+    it('resolvesGeneratedRealApiCatalogPaths', 0, () => {
+      expect(configuredDefaultGatewayUrl()).assertEqual('http://10.0.2.2:8080')
+      expect(realApiPath('entitlements.products')).assertEqual('/entitlements/products')
+      expect(resolveRealApiPath(
+        'devices.wifiTask',
+        ['deviceCode', 'requestId'],
+        ['EDGE/A', 'REQ 1']))
+        .assertEqual('/admin/devices/EDGE%2FA/wifi-config/REQ%201')
+    })
+
+    it('rejectsUnknownOrIncompleteRealApiCatalogPaths', 0, () => {
+      let unknown = ''
+      try {
+        realApiPath('unknown.path')
+      } catch (error) {
+        unknown = error instanceof Error ? error.message : ''
+      }
+      expect(unknown.includes('Unknown Real API key')).assertTrue()
+
+      let incomplete = ''
+      try {
+        resolveRealApiPath('entitlements.orderDetail', [], [])
+      } catch (error) {
+        incomplete = error instanceof Error ? error.message : ''
+      }
+      expect(incomplete.includes('Unresolved Real API path')).assertTrue()
     })
 
     it('normalizesPersistedThemeMode', 0, () => {
@@ -1126,7 +1167,7 @@ export default function localUnitTest() {
       expect((await repository.accountDetail('2108')).status).assertEqual('DELETED')
     })
 
-    it('keepsHm2SaasPlansReadOnlyAndSearchable', 0, async () => {
+    it('keepsHm2SaasPlansSearchableAndUsesOneEditableAggregate', 0, async () => {
       const repository = new DemoPlatformAdminRepository()
       const published = await repository.listSaasPlans(1, 20, '', 'PUBLISHED')
       const pro = await repository.listSaasPlans(1, 20, 'PRO', '')
@@ -1135,6 +1176,119 @@ export default function localUnitTest() {
       const detail = await repository.saasPlanDetail(pro.records[0].planId)
       expect(detail.features.length).assertEqual(3)
       expect(detail.status).assertEqual('PUBLISHED')
+
+      const edited = await repository.saveSaasPlan(detail.planId, {
+        planCode: detail.planCode,
+        name: '专业协作版',
+        version: 'v3.1',
+        status: 'PUBLISHED',
+        priceLabel: '¥799 / 月',
+        billingCycle: 'MONTHLY',
+        deviceLimit: 160,
+        memberLimit: 320,
+        features: ['高级告警', '位置与围栏']
+      })
+      expect(edited.planId).assertEqual(detail.planId)
+      expect((await repository.saasPlanDetail(detail.planId)).name).assertEqual('专业协作版')
+      expect((await repository.listSaasPlans(1, 20, '协作', '')).total).assertEqual(1)
+
+      const created = await repository.saveSaasPlan('', {
+        planCode: 'TEAM',
+        name: '团队版',
+        version: 'v1.0',
+        status: 'DRAFT',
+        priceLabel: '¥399 / 月',
+        billingCycle: 'MONTHLY',
+        deviceLimit: 40,
+        memberLimit: 80,
+        features: ['设备管理']
+      })
+      expect((await repository.saasPlanDetail(created.planId)).planCode).assertEqual('TEAM')
+      expect((await repository.listSaasPlans(1, 20, 'TEAM', '')).total).assertEqual(1)
+    })
+
+    it('rejectsUnknownHm2SaasPlanEditsWithoutCreatingRecords', 0, async () => {
+      const repository = new DemoPlatformAdminRepository()
+      const before = await repository.listSaasPlans(1, 20, '', '')
+      let errorKey = ''
+      try {
+        await repository.saveSaasPlan('missing-plan', {
+          planCode: 'MISSING',
+          name: '不存在的套餐',
+          version: 'v1.0',
+          status: 'DRAFT',
+          priceLabel: '¥1 / 月',
+          billingCycle: 'MONTHLY',
+          deviceLimit: 1,
+          memberLimit: 1,
+          features: ['测试']
+        })
+      } catch (error) {
+        errorKey = error instanceof ApiError ? error.errorKey : ''
+      }
+      expect(errorKey).assertEqual('SAAS_PLAN_NOT_FOUND')
+      expect((await repository.listSaasPlans(1, 20, '', '')).total).assertEqual(before.total)
+
+      let precedenceErrorKey = ''
+      try {
+        await repository.saveSaasPlan('missing-plan', {
+          planCode: 'PRO',
+          name: '',
+          version: '',
+          status: 'INVALID',
+          priceLabel: '',
+          billingCycle: 'INVALID',
+          deviceLimit: 0,
+          memberLimit: 0,
+          features: []
+        })
+      } catch (error) {
+        precedenceErrorKey = error instanceof ApiError ? error.errorKey : ''
+      }
+      expect(precedenceErrorKey).assertEqual('SAAS_PLAN_NOT_FOUND')
+    })
+
+    it('resetsHm2SaasPlanStateAndSequenceDeterministically', 0, async () => {
+      const repository = new DemoPlatformAdminRepository()
+      const input: SaasPlanInput = {
+        planCode: 'RESET',
+        name: '重置验证套餐',
+        version: 'v1.0',
+        status: 'DRAFT',
+        priceLabel: '¥99 / 月',
+        billingCycle: 'MONTHLY',
+        deviceLimit: 5,
+        memberLimit: 10,
+        features: ['重置验证']
+      }
+      const first = await repository.saveSaasPlan('', input)
+      await repository.resetDemo()
+      const second = await repository.saveSaasPlan('', input)
+      await repository.resetDemo()
+      const third = await repository.saveSaasPlan('', input)
+      expect(second.planId).assertEqual(first.planId)
+      expect(third.planId).assertEqual(first.planId)
+    })
+
+    it('resolvesPlatformAccountTenantsForExplicitEntitlementNavigation', 0, async () => {
+      const repository = new DemoPlatformAdminRepository()
+      const adminTenants = await repository.accountTenants('2011')
+      expect(adminTenants.length).assertEqual(1)
+      expect(adminTenants[0].tenantId).assertEqual('preview-tenant-01')
+      expect(adminTenants[0].tenantCode).assertEqual('edge-lab')
+      expect(adminTenants[0].name).assertEqual('边缘网络实验室')
+      const account = await repository.accountDetail('2011')
+      expect(account.username).assertEqual('lab-admin')
+      expect(account.nickname).assertEqual('网络管理员')
+      expect((await repository.accountTenants('2108')).length).assertEqual(0)
+
+      let errorKey = ''
+      try {
+        await repository.accountTenants('missing-account')
+      } catch (error) {
+        errorKey = error instanceof ApiError ? error.errorKey : ''
+      }
+      expect(errorKey).assertEqual('ACCOUNT_NOT_FOUND')
     })
 
     it('clearsHm2ManagedTenantCacheAndResetsState', 0, async () => {
@@ -1940,7 +2094,7 @@ export default function localUnitTest() {
     it('runsHm5OrderPaymentAndRefundWithIndependentRequestIds', 0, () => {
       const repository = new DemoHm5MemberRepository()
       const memberKey = 'preview-tenant-01|preview-member'
-      const order = repository.createOrder(memberKey, 603, true)
+      const order = repository.createOrder(memberKey, '603', true)
       expect(order.status).assertEqual('PENDING_PAYMENT')
       expect(order.orderRequestId).assertEqual('ORDER-DEMO-0003')
 
@@ -1962,7 +2116,7 @@ export default function localUnitTest() {
       const memberKey = 'preview-tenant-01|preview-member'
       let unauthorizedStatus = 0
       try {
-        repository.createOrder(memberKey, 603, false)
+        repository.createOrder(memberKey, '603', false)
       } catch (error) {
         unauthorizedStatus = error instanceof ApiError ? error.httpStatus : 0
       }
@@ -1970,7 +2124,7 @@ export default function localUnitTest() {
 
       let duplicateStatus = 0
       try {
-        repository.createOrder(memberKey, 601, true)
+        repository.createOrder(memberKey, '601', true)
       } catch (error) {
         duplicateStatus = error instanceof ApiError ? error.httpStatus : 0
       }
@@ -1978,7 +2132,7 @@ export default function localUnitTest() {
 
       let paymentConflict = 0
       try {
-        repository.createPayment(memberKey, 901, true)
+        repository.createPayment(memberKey, '901', true)
       } catch (error) {
         paymentConflict = error instanceof ApiError ? error.httpStatus : 0
       }
@@ -2025,7 +2179,7 @@ export default function localUnitTest() {
       expect(repository.orders(memberKey).length).assertEqual(0)
       let activeSessionRequired = ''
       try {
-        repository.createOrder(memberKey, 603, true)
+        repository.createOrder(memberKey, '603', true)
       } catch (error) {
         activeSessionRequired = error instanceof ApiError ? error.errorKey : ''
       }
@@ -2053,12 +2207,12 @@ export default function localUnitTest() {
 
       repository.reset()
       expect(repository.getScenario()).assertEqual('NORMAL')
-      const resetOrder = repository.createOrder(memberKey, 603, true)
-      expect(resetOrder.id).assertEqual(910)
+      const resetOrder = repository.createOrder(memberKey, '603', true)
+      expect(resetOrder.id).assertEqual('910')
       expect(resetOrder.orderRequestId).assertEqual('ORDER-DEMO-0003')
     })
 
-    it('keepsHm5DemoTransportFreeAndRealPending', 0, async () => {
+    it('keepsHm5DemoTransportFreeAndRealMethodsExplicit', 0, async () => {
       runtimeModeStore.activateDemo()
       runtimeModeStore.resetNetworkSentinel()
       networkTransportFactory.resetCounters()
@@ -2076,7 +2230,7 @@ export default function localUnitTest() {
 
       let realErrorKey = ''
       try {
-        await new RealHm5MemberRepository().orders()
+        await new RealHm5MemberRepository().reviewRefund('REFUND-1', true, '')
       } catch (error) {
         realErrorKey = error instanceof ApiError ? error.errorKey : ''
       }
@@ -2088,8 +2242,61 @@ export default function localUnitTest() {
       } catch (error) {
         factoryErrorKey = error instanceof ApiError ? error.errorKey : ''
       }
-      expect(factoryErrorKey).assertEqual('REAL_API_PENDING')
+      expect(factoryErrorKey).assertEqual('AUTHENTICATION_REQUIRED')
       runtimeModeStore.activateDemo()
+    })
+
+    it('mapsHm5BusinessIdentifiersWithoutSyntheticNumericIds', 0, () => {
+      const product = mapHm5Product({
+        productCode: 'DURATION-30D',
+        name: '30 天时长包',
+        entitlementMode: 'DURATION',
+        grantSeconds: 2592000,
+        amountCents: 3990
+      })
+      expect(product.id).assertEqual('DURATION-30D')
+      expect(product.quotaLabel).assertEqual('30.0 天')
+      expect(product.price).assertEqual(39.9)
+
+      const order = mapHm5Order({
+        orderNo: 'ORDER-20260901-001',
+        productCode: 'DURATION-30D',
+        entitlementMode: 'DURATION',
+        amountCents: 3990,
+        status: 'PAID',
+        createTime: '2026-09-01T10:00:00'
+      }, product.name)
+      expect(order.id).assertEqual('ORDER-20260901-001')
+      expect(order.productId).assertEqual('DURATION-30D')
+      expect(order.status).assertEqual('PAID')
+    })
+
+    it('mapsHm5EntitlementAndRefundWireSemantics', 0, () => {
+      const entitlement = mapHm5Entitlement({
+        entitlementId: 88,
+        mode: 'DURATION',
+        remainingSeconds: 5400,
+        subscriptionEndTime: '2026-09-30T23:59:59',
+        status: 1
+      })
+      expect(entitlement.remainingLabel).assertEqual('1.5 小时')
+      expect(entitlement.status).assertEqual('ACTIVE')
+
+      const refund = mapHm5Refund({
+        refundNo: 'REFUND-001',
+        orderNo: 'ORDER-001',
+        purchaseId: 'PURCHASE-001',
+        requestId: 'REQ-001',
+        status: 'SUCCEEDED',
+        reason: '计划变更',
+        requestedAmountCents: 3990,
+        refundAmountCents: 3990,
+        reviewComment: '通过',
+        createTime: '2026-09-01T11:00:00'
+      }, '30 天时长包')
+      expect(refund.id).assertEqual('REFUND-001')
+      expect(refund.orderId).assertEqual('ORDER-001')
+      expect(refund.status).assertEqual('APPROVED')
     })
 
     it('coversHm6MapStatesAndAnalyticsPartialFailure', 0, () => {
@@ -2183,7 +2390,7 @@ export default function localUnitTest() {
       expect(resetCreated.id).assertEqual(1750)
     })
 
-    it('keepsHm6DemoTransportFreeAndRealPending', 0, async () => {
+    it('keepsHm6DemoTransportFreeAndUnsafeRealMethodsPending', 0, async () => {
       runtimeModeStore.activateDemo()
       runtimeModeStore.resetNetworkSentinel()
       networkTransportFactory.resetCounters()
@@ -2212,8 +2419,54 @@ export default function localUnitTest() {
       } catch (error) {
         factoryErrorKey = error instanceof ApiError ? error.errorKey : ''
       }
-      expect(factoryErrorKey).assertEqual('REAL_API_PENDING')
+      expect(factoryErrorKey).assertEqual('AUTHENTICATION_REQUIRED')
       runtimeModeStore.activateDemo()
+    })
+
+    it('mapsHm6LocationAndGeofenceWireContracts', 0, () => {
+      const location = mapHm6Location({
+        id: 51,
+        userId: 7,
+        sessionId: 19,
+        deviceCode: 'EDGE-01',
+        latitude: 31.2304,
+        longitude: 121.4737,
+        accuracy: 8.5,
+        reportTime: '2026-09-01T12:00:00'
+      })
+      expect(location.id).assertEqual(51)
+      expect(location.subjectId).assertEqual('USER-7')
+      expect(location.subjectType).assertEqual('MEMBER')
+      expect(location.accuracyMeters).assertEqual(8.5)
+
+      const geofence = mapHm6Geofence({
+        fenceId: 71,
+        name: '办公区',
+        centerLatitude: 31.23,
+        centerLongitude: 121.47,
+        radiusMeters: 120,
+        enabled: 1,
+        updateTime: '2026-09-01T12:05:00'
+      })
+      expect(geofence.id).assertEqual(71)
+      expect(geofence.shape).assertEqual('CIRCLE')
+      expect(geofence.enabled).assertTrue()
+    })
+
+    it('mapsHm6GeofenceEventWithoutLeakingWireFields', 0, () => {
+      const event = mapHm6GeofenceEvent({
+        eventId: 81,
+        fenceId: 71,
+        fenceName: '办公区',
+        deviceCode: 'EDGE-01',
+        mac: 'AA:BB:CC:DD:EE:FF',
+        eventType: 'EXIT',
+        eventTime: '2026-09-01T12:10:00'
+      })
+      expect(event.id).assertEqual(81)
+      expect(event.geofenceId).assertEqual(71)
+      expect(event.eventType).assertEqual('EXIT')
+      expect(event.subjectName).assertEqual('EDGE-01')
     })
 
     it('coversHm7PlatformCapabilitiesFiltersAndActions', 0, async () => {
@@ -2242,18 +2495,23 @@ export default function localUnitTest() {
         scope: 'TENANT', role: 1, userId: '2', tenantId: 'preview-tenant-02',
         tenantRole: 'TENANT_ADMIN', contextType: 'TENANT'
       }
+      const secondAdmin: Hm7RequestContext = {
+        scope: 'TENANT', role: 1, userId: '4', tenantId: 'preview-tenant-01',
+        tenantRole: 'TENANT_ADMIN', contextType: 'TENANT'
+      }
       const saved = await repository.save(tenantOne, 'CONTENT', 0, {
         title: 'HM7 组织公告', subtitle: '仅组织一可见', detail: '租户隔离验证'
       })
       expect((await repository.list(tenantOne, 'CONTENT', 'HM7', '')).length).assertEqual(1)
+      expect((await repository.list(secondAdmin, 'CONTENT', 'HM7', '')).length).assertEqual(1)
       expect((await repository.list(tenantTwo, 'CONTENT', 'HM7', '')).length).assertEqual(0)
       expect(saved.requestId).assertEqual('HM7-0001')
 
       const delegate: Hm7RequestContext = {
         scope: 'TENANT', role: 0, userId: '1', tenantId: 'preview-tenant-01',
-        tenantRole: 'PLATFORM_ADMIN', contextType: 'PLATFORM_TENANT'
+        subjectUserId: '2001', tenantRole: 'PLATFORM_ADMIN', contextType: 'PLATFORM_TENANT'
       }
-      expect((await repository.list(delegate, 'CONTENT', '', '')).length).assertEqual(2)
+      expect((await repository.list(delegate, 'CONTENT', 'HM7', '')).length).assertEqual(1)
       let errorKey = ''
       try {
         await repository.act(delegate, 'CONTENT', saved.record.id, '撤回')
@@ -2261,10 +2519,196 @@ export default function localUnitTest() {
         errorKey = error instanceof ApiError ? error.errorKey : ''
       }
       expect(errorKey).assertEqual('PLATFORM_DELEGATE_READ_ONLY')
-      const entitlement = (await repository.list(delegate, 'ENTITLEMENT', '', ''))[0]
+      const entitlements = await repository.list(delegate, 'ENTITLEMENT', '', '')
+      expect(entitlements.filter((item): boolean => item.status === 'ACTIVE').length).assertEqual(1)
+      const entitlement = entitlements[0]
       const adjusted = await repository.act(delegate, 'ENTITLEMENT', entitlement.id, '调整权益')
       expect(adjusted.record.status).assertEqual('ACTIVE')
       expect(adjusted.requestId).assertEqual('HM7-0002')
+
+      const sameAccountOtherAdmin: Hm7RequestContext = {
+        scope: 'TENANT', role: 0, userId: 'other-platform-admin',
+        tenantId: 'preview-tenant-01', subjectUserId: '2001',
+        tenantRole: 'PLATFORM_ADMIN', contextType: 'PLATFORM_TENANT'
+      }
+      await repository.save(delegate, 'ENTITLEMENT', entitlement.id, {
+        title: '负责人专属权益', subtitle: entitlement.subtitle, detail: entitlement.detail
+      })
+      expect((await repository.detail(
+        sameAccountOtherAdmin, 'ENTITLEMENT', entitlement.id)).title)
+        .assertEqual('负责人专属权益')
+
+      const otherAccount: Hm7RequestContext = {
+        scope: 'TENANT', role: 0, userId: '1', tenantId: 'preview-tenant-01',
+        subjectUserId: '2011', tenantRole: 'PLATFORM_ADMIN', contextType: 'PLATFORM_TENANT'
+      }
+      expect((await repository.list(otherAccount, 'ENTITLEMENT', '负责人专属', '')).length)
+        .assertEqual(0)
+
+      const missingAccount: Hm7RequestContext = {
+        scope: 'TENANT', role: 0, userId: '1', tenantId: 'preview-tenant-01',
+        tenantRole: 'PLATFORM_ADMIN', contextType: 'PLATFORM_TENANT'
+      }
+      let accountError = ''
+      try {
+        await repository.list(missingAccount, 'ENTITLEMENT', '', '')
+      } catch (error) {
+        accountError = error instanceof ApiError ? error.errorKey : ''
+      }
+      expect(accountError).assertEqual('ACCOUNT_CONTEXT_REQUIRED')
+    })
+
+    it('rejectsUnknownHm7IdentifiersAndAmbiguousCommandsWithoutMutation', 0, async () => {
+      const repository = new DemoHm7CapabilityRepository()
+      const context: Hm7RequestContext = {
+        scope: 'TENANT', role: 1, userId: '2', tenantId: 'preview-tenant-01',
+        tenantRole: 'TENANT_ADMIN', contextType: 'TENANT'
+      }
+      const initial = await repository.list(context, 'CONTENT', '', '')
+      const target = initial[0]
+      let detailError = ''
+      let actionError = ''
+      let updateError = ''
+      let commandError = ''
+      try {
+        await repository.detail(context, 'CONTENT', 999999)
+      } catch (error) {
+        detailError = error instanceof ApiError ? error.errorKey : ''
+      }
+      try {
+        await repository.act(context, 'CONTENT', 999999, '发布')
+      } catch (error) {
+        actionError = error instanceof ApiError ? error.errorKey : ''
+      }
+      try {
+        await repository.save(context, 'CONTENT', 999999, {
+          title: '未知记录', subtitle: '不得创建', detail: '不得改变集合'
+        })
+      } catch (error) {
+        updateError = error instanceof ApiError ? error.errorKey : ''
+      }
+      let negativeUpdateError = ''
+      try {
+        await repository.save(context, 'CONTENT', -47, {
+          title: '负数未知记录', subtitle: '不得创建', detail: '不得改变集合'
+        })
+      } catch (error) {
+        negativeUpdateError = error instanceof ApiError ? error.errorKey : ''
+      }
+      try {
+        await repository.act(context, 'CONTENT', target.id, '发布并撤回')
+      } catch (error) {
+        commandError = error instanceof ApiError ? error.errorKey : ''
+      }
+      const after = await repository.list(context, 'CONTENT', '', '')
+      expect(detailError).assertEqual('HM7_RECORD_NOT_FOUND')
+      expect(actionError).assertEqual('HM7_RECORD_NOT_FOUND')
+      expect(updateError).assertEqual('HM7_RECORD_NOT_FOUND')
+      expect(negativeUpdateError).assertEqual('HM7_RECORD_NOT_FOUND')
+      expect(commandError).assertEqual('HM7_ACTION_INVALID')
+      expect(after.length).assertEqual(initial.length)
+      expect(after[0].status).assertEqual(target.status)
+      expect(after[0].title).assertEqual(target.title)
+
+      let precedenceError = ''
+      try {
+        await repository.save(context, 'CONTENT', 999999, {
+          title: '',
+          subtitle: '',
+          detail: ''
+        })
+      } catch (error) {
+        precedenceError = error instanceof ApiError ? error.errorKey : ''
+      }
+      expect(precedenceError).assertEqual('HM7_RECORD_NOT_FOUND')
+    })
+
+    it('keepsHm7SeedIdentityStableAcrossPageVisitOrder', 0, async () => {
+      const tenant: Hm7RequestContext = {
+        scope: 'TENANT', role: 1, userId: '2', tenantId: 'preview-tenant-01',
+        tenantRole: 'TENANT_ADMIN', contextType: 'TENANT'
+      }
+      const platform: Hm7RequestContext = {
+        scope: 'PLATFORM', role: 0, userId: '1', tenantId: '',
+        tenantRole: 'PLATFORM_ADMIN', contextType: 'PLATFORM'
+      }
+      const direct = new DemoHm7CapabilityRepository()
+      const reordered = new DemoHm7CapabilityRepository()
+      const directContent = await direct.list(tenant, 'CONTENT', '', '')
+      await reordered.list(platform, 'SAAS', '', '')
+      await reordered.list(tenant, 'SUPPORT', '', '')
+      const reorderedContent = await reordered.list(tenant, 'CONTENT', '', '')
+      expect(reorderedContent[0].id).assertEqual(directContent[0].id)
+      expect(reorderedContent[1].id).assertEqual(directContent[1].id)
+    })
+
+    it('isolatesHm7MemberPrivateRecordsByTenantAndOwner', 0, async () => {
+      const repository = new DemoHm7CapabilityRepository()
+      const first: Hm7RequestContext = {
+        scope: 'MEMBER', role: 2, userId: 'member-a', tenantId: 'preview-tenant-01',
+        tenantRole: 'MEMBER', contextType: 'TENANT'
+      }
+      const second: Hm7RequestContext = {
+        scope: 'MEMBER', role: 2, userId: 'member-b', tenantId: 'preview-tenant-01',
+        tenantRole: 'MEMBER', contextType: 'TENANT'
+      }
+      const otherTenant: Hm7RequestContext = {
+        scope: 'MEMBER', role: 2, userId: 'member-a', tenantId: 'preview-tenant-02',
+        tenantRole: 'MEMBER', contextType: 'TENANT'
+      }
+      await repository.save(first, 'SUPPORT', 0, {
+        title: '成员 A 工单', subtitle: '私有', detail: '仅本人可见'
+      })
+      expect((await repository.list(first, 'SUPPORT', '成员 A', '')).length).assertEqual(1)
+      expect((await repository.list(second, 'SUPPORT', '成员 A', '')).length).assertEqual(0)
+      expect((await repository.list(otherTenant, 'SUPPORT', '成员 A', '')).length).assertEqual(0)
+    })
+
+    it('rechecksHm7OwnershipAndCommandsWithAlternateIdentities', 0, async () => {
+      const repository = new DemoHm7CapabilityRepository()
+      const tenantTwoAdminA: Hm7RequestContext = {
+        scope: 'TENANT', role: 1, userId: 'admin-a',
+        tenantId: 'preview-tenant-02', tenantRole: 'TENANT_ADMIN', contextType: 'TENANT'
+      }
+      const tenantTwoAdminB: Hm7RequestContext = {
+        scope: 'TENANT', role: 1, userId: 'admin-b',
+        tenantId: 'preview-tenant-02', tenantRole: 'TENANT_OWNER', contextType: 'TENANT'
+      }
+      const tenantThreeAdmin: Hm7RequestContext = {
+        scope: 'TENANT', role: 1, userId: 'admin-a',
+        tenantId: 'preview-tenant-03', tenantRole: 'TENANT_ADMIN', contextType: 'TENANT'
+      }
+      const announcement = await repository.save(tenantTwoAdminA, 'CONTENT', 0, {
+        title: '第二组织公告', subtitle: '共享聚合复审', detail: '不同管理员读取同一记录'
+      })
+      expect((await repository.detail(
+        tenantTwoAdminB, 'CONTENT', announcement.record.id)).title)
+        .assertEqual('第二组织公告')
+      expect((await repository.list(
+        tenantThreeAdmin, 'CONTENT', '第二组织公告', '')).length).assertEqual(0)
+
+      const support = (await repository.list(tenantTwoAdminA, 'SUPPORT', '', ''))[0]
+      const assigned = await repository.act(
+        tenantTwoAdminA, 'SUPPORT', support.id, '回复并分派')
+      expect(assigned.record.status).assertEqual('ASSIGNED')
+      let invalidCommand = ''
+      try {
+        await repository.act(
+          tenantTwoAdminA, 'SUPPORT', support.id, '回复并分派后关闭')
+      } catch (error) {
+        invalidCommand = error instanceof ApiError ? error.errorKey : ''
+      }
+      expect(invalidCommand).assertEqual('HM7_ACTION_INVALID')
+      expect((await repository.detail(
+        tenantTwoAdminB, 'SUPPORT', support.id)).status).assertEqual('ASSIGNED')
+
+      let missingError = ''
+      try {
+        await repository.detail(tenantTwoAdminA, 'CONTENT', 456789)
+      } catch (error) {
+        missingError = error instanceof ApiError ? error.errorKey : ''
+      }
+      expect(missingError).assertEqual('HM7_RECORD_NOT_FOUND')
     })
 
     it('supportsHm7MemberWorkflowsAndDeterministicReset', 0, async () => {
@@ -2289,8 +2733,14 @@ export default function localUnitTest() {
       const resetSupport = await repository.save(member, 'SUPPORT', 0, {
         title: '成员新工单', subtitle: '连接问题', detail: '确定性重置'
       })
-      expect(resetSupport.record.id).assertEqual(7002)
+      expect(resetSupport.record.id).assertEqual(9000)
       expect(resetSupport.requestId).assertEqual('HM7-0001')
+      repository.reset()
+      const secondReset = await repository.save(member, 'SUPPORT', 0, {
+        title: '成员新工单', subtitle: '连接问题', detail: '确定性重置'
+      })
+      expect(secondReset.record.id).assertEqual(resetSupport.record.id)
+      expect(secondReset.requestId).assertEqual(resetSupport.requestId)
     })
 
     it('keepsHm7DemoTransportFreeAndRealPending', 0, async () => {
@@ -2326,6 +2776,20 @@ export default function localUnitTest() {
       }
       expect(factoryErrorKey).assertEqual('REAL_API_PENDING')
       runtimeModeStore.activateDemo()
+    })
+
+    it('routesHm7RealCapabilitiesByConcreteBackendReadiness', 0, () => {
+      const entitlement = realHm7CapabilityRoute('ENTITLEMENT')
+      expect(entitlement.state).assertEqual('DELEGATED')
+      expect(entitlement.pathPrefix).assertEqual('/entitlements')
+
+      const marketplace = realHm7CapabilityRoute('MARKETPLACE')
+      expect(marketplace.state).assertEqual('PUBLIC_API_PENDING')
+      expect(marketplace.owner).assertEqual('marketplace-service')
+
+      const audit = realHm7CapabilityRoute('AUDIT')
+      expect(audit.state).assertEqual('TENANT_BOUNDARY_PENDING')
+      expect(audit.pathPrefix).assertEqual('/admin/audits')
     })
 
     it('keepsHm7PartialFailureLocalToAiReview', 0, async () => {

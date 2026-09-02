@@ -10,7 +10,7 @@ interface RefundApplyParams { orderId?: string }
 @Component
 struct MemberRefundApplyPage {
   @State orders: MemberOrder[] = []
-  @State selectedOrderId: number = 0
+  @State selectedOrderId: string = ''
   @State reason: string = ''
   @State loading: boolean = true
   @State saving: boolean = false
@@ -18,7 +18,7 @@ struct MemberRefundApplyPage {
 
   aboutToAppear(): void {
     const params = router.getParams() as RefundApplyParams | null
-    this.selectedOrderId = Number(params?.orderId ?? '0')
+    this.selectedOrderId = params?.orderId ?? ''
     this.load()
   }
 
@@ -28,7 +28,7 @@ struct MemberRefundApplyPage {
     try {
       const orders = await repositoryFactory.hm5Member().orders()
       this.orders = orders.filter((order: MemberOrder): boolean => order.status === 'PAID')
-      if (this.selectedOrderId === 0 && this.orders.length > 0) {
+      if (this.selectedOrderId.length === 0 && this.orders.length > 0) {
         this.selectedOrderId = this.orders[0].id
       }
     } catch (error) {

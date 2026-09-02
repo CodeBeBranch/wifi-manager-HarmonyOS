@@ -9,6 +9,7 @@ import {
   PlatformSummary,
   PlatformTenantMember,
   SaasPlan,
+  SaasPlanInput,
   SaasPlanPage,
   TenantCreateInput,
   TenantUpdateInput
@@ -17,6 +18,7 @@ import { PlatformTenant, PlatformTenantPageResult } from '../model/TenantModels'
 import { runtimeModeStore } from '../preview/RuntimeMode'
 import { appPreferences } from '../storage/AppPreferences'
 import http from '@ohos.net.http'
+import { realApiPath } from '../config/RealApiCatalog'
 import { sessionStore } from '../session/SessionStore'
 
 const HM2_DEMO_STATE_KEY = 'demo_platform_hm2_state_v1'
@@ -60,6 +62,7 @@ export interface PlatformAdminRepositoryContract {
   listTenantMembers(tenantId: string, keyword: string): Promise<PlatformTenantMember[]>
   listAccounts(current: number, size: number, keyword: string, status: string): Promise<PlatformAccountPage>
   accountDetail(userId: string): Promise<PlatformAccount>
+  accountTenants(userId: string): Promise<PlatformTenant[]>
   updateAccountStatus(userId: string, status: string): Promise<PlatformAccount>
   submitAccountDeletion(userId: string, reason: string): Promise<AccountDeleteReview>
   listAccountReviews(current: number, size: number, status: string): Promise<AccountReviewPage>
@@ -67,6 +70,7 @@ export interface PlatformAdminRepositoryContract {
   decideAccountReview(reviewId: string, approved: boolean, comment: string): Promise<AccountDeleteReview>
   listSaasPlans(current: number, size: number, keyword: string, status: string): Promise<SaasPlanPage>
   saasPlanDetail(planId: string): Promise<SaasPlan>
+  saveSaasPlan(planId: string, input: SaasPlanInput): Promise<SaasPlan>
   cacheManagedTenant(tenantId: string): void
   managedTenantCacheId(): string
   clearManagedTenantCache(): void
@@ -144,6 +148,7 @@ function defaultMembers(): PlatformTenantMember[] {
   return [
     {
       memberId: 'm-01',
+      tenantId: 'preview-tenant-01',
       userId: '2001',
       username: 'lab-owner',
       nickname: '实验室负责人',
@@ -153,6 +158,7 @@ function defaultMembers(): PlatformTenantMember[] {
     },
     {
       memberId: 'm-02',
+      tenantId: 'preview-tenant-01',
       userId: '2011',
       username: 'lab-admin',
       nickname: '网络管理员',
@@ -162,6 +168,7 @@ function defaultMembers(): PlatformTenantMember[] {
     },
     {
       memberId: 'm-03',
+      tenantId: 'preview-tenant-01',
       userId: '2012',
       username: 'lab-member',
       nickname: '值班成员',
@@ -171,6 +178,7 @@ function defaultMembers(): PlatformTenantMember[] {
     },
     {
       memberId: 'm-04',
+      tenantId: 'preview-tenant-02',
       userId: '2002',
       username: 'campus-owner',
       nickname: '校园网负责人',
@@ -322,8 +330,31 @@ export function createDefaultHm2State(): Hm2DemoState {
     reviews: defaultReviews(),
     plans: defaultPlans(),
     nextTenantSequence: 5,
-    nextReviewSequence: 2
+    nextReviewSequence: 2,
+    nextPlanSequence: 4
   }
+}
+
+function normalizeHm2State(state: Hm2DemoState): Hm2DemoState {
+  if (!Number.isInteger(state.nextPlanSequence) || state.nextPlanSequence < 1) {
+    state.nextPlanSequence = state.plans.length + 1
+  }
+  state.members.forEach((member: PlatformTenantMember): void => {
+    if (member.tenantId !== undefined && member.tenantId.length > 0) return
+    if (member.userId === '2001' || member.userId === '2011' || member.userId === '2012') {
+      member.tenantId = 'preview-tenant-01'
+      return
+    }
+    if (member.userId === '2002') {
+      member.tenantId = 'preview-tenant-02'
+      return
+    }
+    const ownedTenant = state.tenants.find(
+      (tenant: PlatformTenant): boolean => tenant.ownerUserId === member.userId
+    )
+    if (ownedTenant !== undefined) member.tenantId = ownedTenant.tenantId
+  })
+  return state
 }
 
 function normalizePage(current: number): number {
@@ -462,6 +493,17 @@ export class DemoPlatformAdminRepository implements PlatformAdminRepositoryContr
         updateTime: '刚刚'
       }
       this.state.tenants.unshift(tenant)
+      this.state.members.push({
+        memberId: `owner-${tenant.tenantId}`,
+        tenantId: tenant.tenantId,
+        userId: owner.userId,
+        username: owner.username,
+        nickname: owner.nickname,
+        role: 'TENANT_OWNER',
+        status: owner.status,
+        joinedAt: tenant.createTime ?? ''
+      })
+      owner.tenantCount += 1
       return cloneState(tenant)
     })
   }
@@ -512,17 +554,15 @@ export class DemoPlatformAdminRepository implements PlatformAdminRepositoryContr
     const owner = this.state.accounts.find(
       (item: PlatformAccount): boolean => item.userId === tenant.ownerUserId
     )
-    const memberIds = tenantId === 'preview-tenant-01'
-      ? ['2001', '2011', '2012']
-      : [tenant.ownerUserId]
     let members = this.state.members.filter(
-      (item: PlatformTenantMember): boolean => memberIds.includes(item.userId)
+      (item: PlatformTenantMember): boolean => item.tenantId === tenantId
     ).map((item: PlatformTenantMember): PlatformTenantMember => {
       if (item.userId !== tenant.ownerUserId) {
         return item
       }
       return {
         memberId: `owner-${tenantId}`,
+        tenantId: tenantId,
         userId: item.userId,
         username: item.username,
         nickname: item.nickname,
@@ -534,6 +574,7 @@ export class DemoPlatformAdminRepository implements PlatformAdminRepositoryContr
     if (members.length === 0 && owner !== undefined) {
       members = [{
         memberId: `owner-${tenantId}`,
+        tenantId: tenantId,
         userId: owner.userId,
         username: owner.username,
         nickname: owner.nickname,
@@ -584,6 +625,26 @@ export class DemoPlatformAdminRepository implements PlatformAdminRepositoryContr
     await this.beforeRead('ACCOUNT_DETAIL')
     this.requireNonEmptyScenario('账号')
     return cloneState(this.requireAccount(userId))
+  }
+
+  async accountTenants(userId: string): Promise<PlatformTenant[]> {
+    await this.waitForWrites()
+    await this.ensureLoaded()
+    await this.beforeRead('ACCOUNT_TENANTS')
+    this.requireNonEmptyScenario('账号所属组织')
+    this.requireAccount(userId)
+    const tenantIds = new Set<string>()
+    this.state.members.forEach((item: PlatformTenantMember): void => {
+      if (item.userId === userId && item.tenantId !== undefined) {
+        tenantIds.add(item.tenantId)
+      }
+    })
+    this.state.tenants.forEach((item: PlatformTenant): void => {
+      if (item.ownerUserId === userId) tenantIds.add(item.tenantId)
+    })
+    return cloneState(this.state.tenants.filter(
+      (item: PlatformTenant): boolean => tenantIds.has(item.tenantId)
+    ))
   }
 
   async updateAccountStatus(userId: string, status: string): Promise<PlatformAccount> {
@@ -727,6 +788,73 @@ export class DemoPlatformAdminRepository implements PlatformAdminRepositoryContr
       throw new ApiError('没有找到套餐', 404, 404, 'SAAS_PLAN_NOT_FOUND')
     }
     return cloneState(plan)
+  }
+
+  async saveSaasPlan(planId: string, input: SaasPlanInput): Promise<SaasPlan> {
+    this.beforeMutation()
+    return this.write<SaasPlan>(() => {
+      let plan = this.state.plans.find((item: SaasPlan): boolean => item.planId === planId)
+      if (plan === undefined && planId.length > 0) {
+        throw new ApiError('没有找到套餐', 404, 404, 'SAAS_PLAN_NOT_FOUND')
+      }
+      const normalizedCode = requireText(input.planCode, '套餐编码', 32).toUpperCase()
+      const normalizedName = requireText(input.name, '套餐名称', 64)
+      const normalizedVersion = requireText(input.version, '套餐版本', 24)
+      const normalizedPrice = requireText(input.priceLabel, '价格说明', 48)
+      if (input.status !== 'DRAFT' && input.status !== 'PUBLISHED') {
+        throw new ApiError('套餐状态无效', 400, 400, 'SAAS_PLAN_STATUS_INVALID')
+      }
+      if (input.billingCycle !== 'MONTHLY' && input.billingCycle !== 'YEARLY' &&
+        input.billingCycle !== 'CUSTOM') {
+        throw new ApiError('计费周期无效', 400, 400, 'SAAS_PLAN_BILLING_CYCLE_INVALID')
+      }
+      if (!Number.isInteger(input.deviceLimit) || input.deviceLimit < 1 ||
+        !Number.isInteger(input.memberLimit) || input.memberLimit < 1) {
+        throw new ApiError('设备和成员上限必须为正整数', 400, 400, 'SAAS_PLAN_LIMIT_INVALID')
+      }
+      const normalizedFeatures = input.features.map(
+        (item: string): string => item.trim()
+      ).filter((item: string): boolean => item.length > 0)
+      if (normalizedFeatures.length === 0) {
+        throw new ApiError('至少填写一项功能', 400, 400, 'SAAS_PLAN_FEATURE_REQUIRED')
+      }
+      const duplicate = this.state.plans.find(
+        (item: SaasPlan): boolean => item.planCode === normalizedCode && item.planId !== planId
+      )
+      if (duplicate !== undefined) {
+        throw new ApiError('套餐编码已存在', 409, 409, 'SAAS_PLAN_CODE_CONFLICT')
+      }
+      if (plan === undefined) {
+        const sequence = this.state.nextPlanSequence
+        this.state.nextPlanSequence += 1
+        plan = {
+          planId: `plan-${String(sequence).padStart(3, '0')}`,
+          planCode: normalizedCode,
+          name: normalizedName,
+          version: normalizedVersion,
+          status: input.status,
+          priceLabel: normalizedPrice,
+          billingCycle: input.billingCycle,
+          deviceLimit: input.deviceLimit,
+          memberLimit: input.memberLimit,
+          features: normalizedFeatures,
+          updatedAt: '刚刚'
+        }
+        this.state.plans.unshift(plan)
+      } else {
+        plan.planCode = normalizedCode
+        plan.name = normalizedName
+        plan.version = normalizedVersion
+        plan.status = input.status
+        plan.priceLabel = normalizedPrice
+        plan.billingCycle = input.billingCycle
+        plan.deviceLimit = input.deviceLimit
+        plan.memberLimit = input.memberLimit
+        plan.features = normalizedFeatures
+        plan.updatedAt = '刚刚'
+      }
+      return cloneState(plan)
+    })
   }
 
   cacheManagedTenant(tenantId: string): void {
@@ -874,7 +1002,7 @@ export class DemoPlatformAdminRepository implements PlatformAdminRepositoryContr
           const serialized = await this.preferenceStorage.getString(HM2_DEMO_STATE_KEY)
           if (serialized.length > 0) {
             try {
-              this.state = JSON.parse(serialized) as Hm2DemoState
+              this.state = normalizeHm2State(JSON.parse(serialized) as Hm2DemoState)
             } catch (_) {
               this.state = createDefaultHm2State()
               await this.preferenceStorage.remove(HM2_DEMO_STATE_KEY)
@@ -953,7 +1081,7 @@ class RealPlatformAdminRepository implements PlatformAdminRepositoryContract {
       : ''
     const response = await sessionStore.authorizedRequest<PlatformTenantPageResult>(
       http.RequestMethod.GET,
-      `/admin/platform/tenants?current=${current}&size=${size}${query}`
+      `${realApiPath('platform.tenants')}?current=${current}&size=${size}${query}`
     )
     return response.data
   }
@@ -988,6 +1116,10 @@ class RealPlatformAdminRepository implements PlatformAdminRepositoryContract {
   }
 
   async accountDetail(_userId: string): Promise<PlatformAccount> {
+    throw realPending()
+  }
+
+  async accountTenants(_userId: string): Promise<PlatformTenant[]> {
     throw realPending()
   }
 
@@ -1029,6 +1161,10 @@ class RealPlatformAdminRepository implements PlatformAdminRepositoryContract {
   }
 
   async saasPlanDetail(_planId: string): Promise<SaasPlan> {
+    throw realPending()
+  }
+
+  async saveSaasPlan(_planId: string, _input: SaasPlanInput): Promise<SaasPlan> {
     throw realPending()
   }
 

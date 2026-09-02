@@ -46,7 +46,7 @@ struct MemberEntitlementPage {
             .fontColor(AppTheme.text).width('100%')
           this.row('状态', this.entitlement.status)
           this.row('计费模式', this.entitlement.mode)
-          this.row('剩余流量', `${this.entitlement.remainingGb.toFixed(1)} GB`)
+          this.row('剩余额度', this.entitlement.remainingLabel)
           this.row('有效期至', this.entitlement.expiresAt)
         }.width('100%').padding(16).backgroundColor(AppTheme.surface)
           .border({ width: 1, color: AppTheme.border }).borderRadius(8)

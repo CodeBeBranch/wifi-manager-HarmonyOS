@@ -1,6 +1,7 @@
 import router from '@ohos.router'
 import { ApiError } from '../model/ApiModels'
 import { PlatformAccount, PlatformAccountDetailParams } from '../model/Hm2Models'
+import { PlatformTenant } from '../model/TenantModels'
 import { resetToMain } from '../navigation/AppRouter'
 import { platformAdminRepositoryFactory } from '../repository/PlatformAdminRepository'
 import { sessionStore } from '../session/SessionStore'
@@ -10,6 +11,7 @@ import { AppTheme } from '../ui/AppTheme'
 @Component
 struct PlatformAccountDetailPage {
   @State account: PlatformAccount | null = null
+  @State accountTenants: PlatformTenant[] = []
   @State deletionReason: string = ''
   @State loading: boolean = false
   @State submitting: boolean = false
@@ -33,7 +35,9 @@ struct PlatformAccountDetailPage {
     this.loading = true
     this.errorMessage = ''
     try {
-      this.account = await platformAdminRepositoryFactory.current().accountDetail(this.userId)
+      const repository = platformAdminRepositoryFactory.current()
+      this.account = await repository.accountDetail(this.userId)
+      this.accountTenants = await repository.accountTenants(this.userId)
     } catch (error) {
       this.errorMessage = error instanceof ApiError ? error.message : '账号详情加载失败'
     } finally {
@@ -114,6 +118,16 @@ struct PlatformAccountDetailPage {
     return '已删除'
   }
 
+  private openEntitlement(tenant: PlatformTenant): void {
+    router.pushUrl({
+      url: 'pages/PlatformAccountEntitlementPage',
+      params: {
+        tenantId: tenant.tenantId,
+        userId: this.userId
+      }
+    })
+  }
+
   build() {
     Column() {
       Row({ space: 12 }) {
@@ -182,6 +196,50 @@ struct PlatformAccountDetailPage {
                   .borderRadius(8)
                   .margin({ top: 16 })
                   .onClick(() => this.confirmStatus())
+              }
+
+              if (this.accountTenants.length > 0) {
+                Text('组织权益')
+                  .fontSize(13)
+                  .fontWeight(FontWeight.Medium)
+                  .fontColor(AppTheme.muted)
+                  .width('100%')
+                  .margin({ top: 24, bottom: 8 })
+                Column() {
+                  ForEach(this.accountTenants, (tenant: PlatformTenant, index: number) => {
+                    Row({ space: 10 }) {
+                      Column({ space: 3 }) {
+                        Text(tenant.name)
+                          .fontSize(14)
+                          .fontWeight(FontWeight.Medium)
+                          .fontColor(AppTheme.text)
+                        Text(tenant.tenantCode)
+                          .fontSize(12)
+                          .fontColor(AppTheme.muted)
+                      }
+                      .alignItems(HorizontalAlign.Start)
+                      .layoutWeight(1)
+                      Text('查看权益')
+                        .fontSize(13)
+                        .fontColor(AppTheme.primary)
+                      SymbolGlyph($r('sys.symbol.chevron_forward'))
+                        .fontSize(16)
+                        .fontColor([AppTheme.muted])
+                    }
+                    .width('100%')
+                    .height(56)
+                    .padding({ left: 14, right: 14 })
+                    .border({
+                      width: { bottom: index < this.accountTenants.length - 1 ? 1 : 0 },
+                      color: AppTheme.border
+                    })
+                    .onClick(() => this.openEntitlement(tenant))
+                  }, (tenant: PlatformTenant) => tenant.tenantId)
+                }
+                .width('100%')
+                .backgroundColor(AppTheme.surface)
+                .border({ width: 1, color: AppTheme.border })
+                .borderRadius(8)
               }
 
               if (this.account?.role !== 'SUPER_ADMIN' &&

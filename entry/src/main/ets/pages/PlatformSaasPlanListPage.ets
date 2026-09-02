@@ -16,6 +16,7 @@ struct PlatformSaasPlanListPage {
   @State loading: boolean = false
   @State errorMessage: string = ''
   private requestVersion: number = 0
+  private authorized: boolean = false
 
   aboutToAppear(): void {
     const snapshot = sessionStore.getSnapshot()
@@ -24,6 +25,11 @@ struct PlatformSaasPlanListPage {
       resetToMain()
       return
     }
+    this.authorized = true
+  }
+
+  onPageShow(): void {
+    if (!this.authorized) return
     this.load()
   }
 

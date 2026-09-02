@@ -1,4 +1,5 @@
 import http from '@ohos.net.http'
+import { realApiPath, resolveRealApiPath } from '../config/RealApiCatalog'
 import {
   NetworkSession,
   SessionPageResult,
@@ -22,7 +23,7 @@ class SessionRepository {
     }
     params = addQuery(params, 'status', query.status)
 
-    const path = admin ? '/admin/sessions' : '/sessions'
+    const path = realApiPath(admin ? 'sessions.admin' : 'sessions.mine')
     const response = await sessionStore.authorizedRequest<SessionPageResult>(
       http.RequestMethod.GET,
       `${path}${params}`
@@ -31,11 +32,13 @@ class SessionRepository {
   }
 
   async close(sessionId: number, admin: boolean): Promise<NetworkSession> {
-    const action = admin ? 'revoke' : 'logout'
-    const path = admin ? '/admin/sessions' : '/sessions'
+    const path = resolveRealApiPath(
+      admin ? 'sessions.revoke' : 'sessions.logout',
+      ['sessionId'],
+      [String(sessionId)])
     const response = await sessionStore.authorizedRequest<NetworkSession>(
       http.RequestMethod.POST,
-      `${path}/${sessionId}/${action}`
+      path
     )
     return response.data
   }

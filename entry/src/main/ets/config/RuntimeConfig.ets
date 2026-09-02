@@ -1,4 +1,8 @@
-const DEFAULT_GATEWAY_URL = 'http://10.0.2.2:8080'
+import {
+  configuredAlertWebSocketPath,
+  configuredDefaultGatewayUrl
+} from './RealApiCatalog'
+
 const DEFAULT_ALERT_WEBSOCKET_ORIGIN = 'http://portal.test:5173'
 
 export function normalizeGatewayUrl(value: string): string {
@@ -10,13 +14,13 @@ export function normalizeGatewayUrl(value: string): string {
 }
 
 export function defaultGatewayUrl(): string {
-  return DEFAULT_GATEWAY_URL
+  return configuredDefaultGatewayUrl()
 }
 
 export function buildAlertWebSocketUrl(gatewayUrl: string): string {
   const normalized = normalizeGatewayUrl(gatewayUrl)
   const protocol = normalized.startsWith('https://') ? 'wss://' : 'ws://'
-  return `${protocol}${normalized.replace(/^https?:\/\//i, '')}/ws/alerts`
+  return `${protocol}${normalized.replace(/^https?:\/\//i, '')}${configuredAlertWebSocketPath()}`
 }
 
 export function defaultAlertWebSocketOrigin(): string {
